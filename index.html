@@ -13,16 +13,17 @@
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0a0b14;--bg2:#12141f;--bg3:#1a1c2e;
-  --text:#eef1fa;--sub:#6b7394;--muted:rgba(255,255,255,0.06);
-  --border:rgba(255,255,255,0.07);
-  --v:#7c3aed;--b:#3b82f6;--c:#06b6d4;--g:#10b981;
-  --grad:linear-gradient(135deg,#c4b5fd,#7dd3fc);
+  --bg:#faf8f4;--bg2:#ffffff;--bg3:#f2eee6;
+  --text:#2a2520;--sub:#6f675c;--muted:rgba(42,37,32,.055);
+  --border:rgba(42,37,32,.10);
+  --v:#176b57;--v2:#125548;--gold:#b98a2f;--gold2:#c9973f;--g:#1e8e5a;
+  --red:#c0392b;
+  --grad:linear-gradient(135deg,#c9973f,#176b57);
 }
 html{scroll-behavior:smooth}
 body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;line-height:1.6}
-::selection{background:rgba(124,58,237,.3)}
-a{color:#a5b4fc}
+::selection{background:rgba(201,151,63,.35)}
+a{color:#125548}
 
 /* ── GATE ── */
 #gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200}
@@ -33,7 +34,7 @@ a{color:#a5b4fc}
 .gate-input:focus{border-color:var(--v)}
 .gate-err{color:#f87171;font-size:.8rem;min-height:1.2em;margin-bottom:.4rem}
 .btn{background:var(--v);color:#fff;border:none;border-radius:9px;padding:.85rem 1.4rem;font-weight:600;font-size:.9rem;cursor:pointer;width:100%;transition:all .2s}
-.btn:hover{background:#6d28d9}
+.btn:hover{background:var(--v2)}
 
 /* ── MAIN ── */
 #app{display:none;max-width:1080px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
@@ -56,26 +57,26 @@ nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:
 .btn-sm{background:var(--bg3);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:.6rem 1rem;font-size:.82rem;font-weight:600;cursor:pointer}
 .btn-sm:hover{background:var(--muted)}
 #status{font-size:.85rem;color:var(--sub)}
-#status.err{color:#f87171}
-#status.ok{color:#34d399}
+#status.err{color:var(--red)}
+#status.ok{color:#16794a}
 
 /* ── RESULTS ── */
 #results{display:none}
 .r-block{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:1.2rem;margin-bottom:1rem;position:relative}
-.r-label{font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a5b4fc;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center}
+.r-label{font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#a87b2e;margin-bottom:.5rem;display:flex;justify-content:space-between;align-items:center}
 .r-label button{background:var(--muted);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.3rem .7rem;font-size:.7rem;cursor:pointer}
 .r-label button:hover{background:rgba(255,255,255,.1)}
 .r-text{white-space:pre-wrap;font-size:.92rem;color:var(--text)}
 .r-faq{margin-top:1.5rem}
 .r-faq-item{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.1rem;margin-bottom:.6rem}
-.r-faq-item strong{color:#c4b5fd;font-size:.84rem;display:block;margin-bottom:.25rem}
+.r-faq-item strong{color:var(--v);font-size:.84rem;display:block;margin-bottom:.25rem}
 .r-faq-item p{font-size:.84rem;color:var(--sub)}
-.usage{display:inline-block;background:rgba(16,185,129,.12);color:#34d399;border-radius:6px;padding:.25rem .7rem;font-size:.75rem;font-weight:600}
+.usage{display:inline-block;background:rgba(30,142,90,.12);color:#16794a;border-radius:6px;padding:.25rem .7rem;font-size:.75rem;font-weight:600}
 .plans{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.2rem}
 @media(max-width:700px){.plans{grid-template-columns:1fr}}
 .plan{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.6rem;position:relative}
-.plan.featured{border-color:rgba(124,58,237,.5);background:linear-gradient(180deg,rgba(124,58,237,.08),var(--bg2))}
-.plan-badge{position:absolute;top:-10px;right:16px;background:var(--v);color:#fff;font-size:.65rem;font-weight:700;padding:.25rem .6rem;border-radius:99px;letter-spacing:.05em;text-transform:uppercase}
+.plan.featured{border-color:rgba(185,138,47,.6);background:linear-gradient(180deg,rgba(201,151,63,.10),#fff)}
+.plan-badge{position:absolute;top:-10px;right:16px;background:var(--gold);color:#fff;font-size:.65rem;font-weight:700;padding:.25rem .6rem;border-radius:99px;letter-spacing:.05em;text-transform:uppercase}
 .plan h3{font-size:.95rem;font-weight:700;margin-bottom:.3rem}
 .plan-price{font-family:'DM Serif Display',serif;font-size:1.7rem;margin-bottom:.6rem}
 .plan-price small{font-family:'Inter',sans-serif;font-size:.8rem;color:var(--sub);font-weight:400}
@@ -89,9 +90,42 @@ nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:
 .mode{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.6rem}
 .mode h3{font-size:.95rem;font-weight:700;margin-bottom:.5rem}
 .mode p{font-size:.86rem;color:var(--sub)}
-.soon{display:inline-block;background:rgba(251,191,36,.15);color:#fbbf24;font-size:.62rem;font-weight:700;padding:.2rem .5rem;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;vertical-align:middle;margin-left:.35rem}
+.soon{display:inline-block;background:rgba(185,138,47,.15);color:#a87b2e;font-size:.62rem;font-weight:700;padding:.2rem .5rem;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;vertical-align:middle;margin-left:.35rem}
 footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:.5rem}
+
+/* ── HERO ── */
+.hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:2.5rem;align-items:center;margin-bottom:.6rem}
+.hero-media{position:relative;border-radius:18px;overflow:hidden;box-shadow:0 22px 50px rgba(42,37,32,.16);border:1px solid var(--border);background:linear-gradient(135deg,#f2eee6,#e7e0d2)}
+.hero-media img{width:100%;display:block;object-fit:cover;aspect-ratio:4/3}
+.hero-media .tag{position:absolute;left:12px;bottom:12px;background:rgba(255,255,255,.93);color:#2a2520;font-size:.72rem;font-weight:700;padding:.4rem .8rem;border-radius:99px;letter-spacing:.02em;box-shadow:0 4px 12px rgba(42,37,32,.14)}
+.cta-row{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-top:1.3rem}
+.cta-note{font-size:.8rem;color:var(--sub)}
+@media(max-width:860px){.hero-grid{grid-template-columns:1fr}.hero-media{order:-1}}
+
+/* ── PORTALS STRIP ── */
+.portals{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:1.2rem 0 .4rem}
+.portals>span{font-size:.72rem;font-weight:600;color:var(--sub);text-transform:uppercase;letter-spacing:.06em}
+.portal-chip{background:#fff;border:1px solid var(--border);border-radius:99px;padding:.35rem .85rem;font-size:.75rem;font-weight:600;color:var(--text);display:inline-flex;align-items:center;gap:.35rem}
+.portal-chip::before{content:"✓";color:var(--g);font-weight:800}
+
+/* ── STEPS ── */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin:1.4rem 0 .2rem}
+@media(max-width:700px){.steps{grid-template-columns:1fr}}
+.step{background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.2rem 1.3rem}
+.step-num{font-family:'DM Serif Display',serif;font-size:1.2rem;color:var(--gold2);display:block;margin-bottom:.3rem}
+.step h4{font-size:.9rem;font-weight:700;margin-bottom:.25rem}
+.step p{font-size:.82rem;color:var(--sub)}
+
+/* ── BEFORE / AFTER ── */
+.ba{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.4rem 0 .2rem}
+@media(max-width:700px){.ba{grid-template-columns:1fr}}
+.ba-card{border-radius:14px;padding:1.2rem 1.3rem;font-size:.84rem;line-height:1.55}
+.ba-card.before{background:#f4f1ea;border:1px dashed var(--border);color:#6f675c}
+.ba-card.after{background:#fff;border:1px solid rgba(23,107,87,.35);box-shadow:0 10px 24px rgba(23,107,87,.10)}
+.ba-tag{font-size:.66rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:.5rem}
+.ba-card.before .ba-tag{color:#a39680}
+.ba-card.after .ba-tag{color:var(--v)}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -115,8 +149,28 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <div class="note">PT-PT · pronto para Idealista/OLX/CASAFARI · versão EN incluída</div>
   </nav>
 
-  <h1 class="hero-h">Em 1 minuto, <em>transforma anúncios em visitas</em></h1>
-  <p class="hero-p">Dá-nos os dados do imóvel e recebe um anúncio completo em português de Portugal: título com SEO, descrição curta e longa, versão em inglês para compradores estrangeiros e respostas às perguntas mais frequentes. Sem pt-BR, sem enchimento — pronto a publicar no Idealista, OLX, CASAFARI ou no teu site.</p>
+  <div class="hero-grid">
+    <div>
+      <h1 class="hero-h">Em 1 minuto, <em>transforma anúncios em visitas</em></h1>
+      <p class="hero-p">Dá-nos os dados do imóvel e recebe um anúncio completo em português de Portugal: título com SEO, descrição curta e longa, versão em inglês para compradores estrangeiros e respostas às perguntas mais frequentes. Sem pt-BR, sem enchimento — pronto a publicar no Idealista, OLX, CASAFARI ou no teu site.</p>
+      <div class="cta-row">
+        <button class="btn" style="width:auto" onclick="document.getElementById('form-card').scrollIntoView({behavior:'smooth'})">⚡ Experimentar agora</button>
+        <span class="cta-note">Grátis durante o teste · sem cartão de crédito</span>
+      </div>
+    </div>
+    <div class="hero-media">
+      <img src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=900&q=80" alt="Casa pronta a anunciar" loading="lazy"/>
+      <div class="tag">Pronto para publicar nos portais</div>
+    </div>
+  </div>
+
+  <div class="portals"><span>Pronto para</span><span class="portal-chip">Idealista</span><span class="portal-chip">Imovirtual</span><span class="portal-chip">CASAFARI</span><span class="portal-chip">OLX</span><span class="portal-chip">Remax</span><span class="portal-chip">Century 21</span></div>
+
+  <div class="steps">
+    <div class="step"><span class="step-num">1</span><h4>Preenche os dados</h4><p>Tipologia, zona, preço e características — 3 linhas, sem formulários de 10 páginas.</p></div>
+    <div class="step"><span class="step-num">2</span><h4>A IA escreve em PT-PT</h4><p>Vocabulário real de imobiliária portuguesa — não o pt-BR que o ChatGPT genérico devolve.</p></div>
+    <div class="step"><span class="step-num">3</span><h4>Publica e recebe visitas</h4><p>Título SEO, descrição curta e longa, versão EN e FAQs — tudo pronto a copiar.</p></div>
+  </div>
 
   <div class="modes">
     <div class="mode">
@@ -129,7 +183,7 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="form-card">
     <h3>Dados do imóvel</h3>
     <div class="grid">
       <div class="field"><label>Tipologia</label><input id="f_tipo" placeholder="T2"/></div>
@@ -156,6 +210,11 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <div id="r_long"></div>
     <div id="r_en"></div>
     <div id="r_faq"></div>
+  </div>
+
+  <div class="ba">
+    <div class="ba-card before"><span class="ba-tag">Anúncio genérico (pt-BR)</span>"Apartamento incrível em Lisboa, super charmoso, com vista maravilhosa! Venha conhecer essa oportunidade única, não perca essa chance incrível de morar em um local privilegiado. Aceita propostas."</div>
+    <div class="ba-card after"><span class="ba-tag">Com Casa que Vende (PT-PT)</span>"T2 reabilitado em 2023 no coração de Alvalade, a 5 minutos do metro. 87 m² com varanda de 8 m² virada a poente, garagem e arrecadação. Certificado energético B-. Condomínio com piscina. Ideal para quem quer Lisboa sem abrir mão de qualidade de vida."</div>
   </div>
 
   <div class="card">
