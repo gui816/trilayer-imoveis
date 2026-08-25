@@ -72,7 +72,8 @@ nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:
 .r-faq-item strong{color:var(--v);font-size:.84rem;display:block;margin-bottom:.25rem}
 .r-faq-item p{font-size:.84rem;color:var(--sub)}
 .usage{display:inline-block;background:rgba(30,142,90,.12);color:#16794a;border-radius:6px;padding:.25rem .7rem;font-size:.75rem;font-weight:600}
-.plans{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1.2rem}
+.plans{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.2rem}
+@media(max-width:900px){.plans{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.plans{grid-template-columns:1fr}}
 .plan{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.6rem;position:relative}
 .plan.featured{border-color:rgba(185,138,47,.6);background:linear-gradient(180deg,rgba(201,151,63,.10),#fff)}
@@ -231,12 +232,22 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
         </ul>
         <button class="btn" disabled>Em breve</button>
       </div>
+      <div class="plan">
+        <h3>Semanal</h3>
+        <div class="plan-price">€5 <small>/semana</small></div>
+        <ul>
+          <li>Até 50 descrições por semana</li>
+          <li>Para testar 7 dias a sério</li>
+          <li>Ou para uma semana de anúncios</li>
+        </ul>
+        <button class="btn" disabled>Em breve</button>
+      </div>
       <div class="plan featured">
         <div class="plan-badge">Melhor valor</div>
         <h3>Mensal</h3>
         <div class="plan-price">€9,99 <small>/mês</small></div>
         <ul>
-          <li>Descrições ilimitadas</li>
+          <li>Descrições ilimitadas (uso razoável)</li>
           <li>Todas as plataformas (Idealista, OLX, CASAFARI…)</li>
           <li>Versão EN incluída para compradores estrangeiros</li>
         </ul>
@@ -310,7 +321,7 @@ async function generate(){
 
 function render(j){
   $("results").style.display = "block";
-  $("usage").textContent = "Usos hoje: " + j.usos_hoje + "/" + j.limite;
+  $("usage").textContent = "Hoje " + j.usos_hoje + "/" + j.limite + " · Semana " + j.usos_semana + "/" + j.limite_semana + " · Mês " + j.usos_mes + "/" + j.limite_mes;
   $("r_title").innerHTML = block("Título (SEO)", j.titulo_seo);
   $("r_short").innerHTML = block("Descrição curta", j.descricao_curta);
   $("r_long").innerHTML = block("Descrição longa PT-PT", j.descricao_longa);

@@ -7,6 +7,8 @@ Env vars:
   GEMINI_API_KEY  (obrigatório)
   API_PASSWORD    (password de acesso de teste)
   LIMIT_PER_DAY   (default 20)
+  LIMIT_PER_WEEK  (default 50)
+  LIMIT_PER_MONTH (default 200)
   GEMINI_MODEL    (default gemini-2.5-flash)
 """
 
@@ -31,6 +33,8 @@ app.add_middleware(
 
 API_PASSWORD = os.environ.get("API_PASSWORD", "troca-esta-password")
 LIMIT_PER_DAY = int(os.environ.get("LIMIT_PER_DAY", "20"))
+LIMIT_PER_WEEK = int(os.environ.get("LIMIT_PER_WEEK", "50"))
+LIMIT_PER_MONTH = int(os.environ.get("LIMIT_PER_MONTH", "200"))
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 USAGE_FILE = os.path.join(os.path.dirname(__file__), "usage.json")
 
@@ -76,15 +80,25 @@ class GenerateRequest(BaseModel):
     dados: DadosImovel
 
 
+def _week_key(d):
+    iso = d.isocalendar()
+    return f"{iso[0]}-W{iso[1]:02d}"
+
+
 def read_usage() -> dict:
     try:
         with open(USAGE_FILE) as f:
             data = json.load(f)
     except Exception:
         data = {}
-    today = date.today().isoformat()
-    if data.get("date") != today:
-        data = {"date": today, "count": 0}
+    today = date.today()
+    day, week, month = today.isoformat(), _week_key(today), today.strftime("%Y-%m")
+    if data.get("day") != day:
+        data["day"], data["day_count"] = day, 0
+    if data.get("week") != week:
+        data["week"], data["week_count"] = week, 0
+    if data.get("month") != month:
+        data["month"], data["month_count"] = month, 0
     return data
 
 
@@ -151,16 +165,20 @@ def generate(req: GenerateRequest):
         raise HTTPException(401, "Password incorreta.")
 
     usage = read_usage()
-    if usage["count"] >= LIMIT_PER_DAY:
-        raise HTTPException(
-            402, f"Limite diário atingido ({LIMIT_PER_DAY} descrições). Volta amanhã ou assina o plano ilimitado."
-        )
+    if usage["day_count"] >= LIMIT_PER_DAY:
+        raise HTTPException(402, f"Limite diário atingido ({LIMIT_PER_DAY} descrições). Volta amanhã ou assina o plano ilimitado.")
+    if usage["week_count"] >= LIMIT_PER_WEEK:
+        raise HTTPException(402, f"Limite semanal atingido ({LIMIT_PER_WEEK} descrições). Volta na próxima semana ou assina o plano ilimitado.")
+    if usage["month_count"] >= LIMIT_PER_MONTH:
+        raise HTTPException(402, f"Limite mensal atingido ({LIMIT_PER_MONTH} descrições). Volta no próximo mês ou assina o plano ilimitado.")
 
     t0 = time.time()
     raw = call_gemini(build_prompt(req.dados))
     result = parse_json(raw)
 
-    usage["count"] += 1
+    usage["day_count"] += 1
+    usage["week_count"] += 1
+    usage["month_count"] += 1
     write_usage(usage)
 
     return {
@@ -169,7 +187,11 @@ def generate(req: GenerateRequest):
         "descricao_longa": result.get("descricao_longa", ""),
         "descricao_en": result.get("descricao_en", ""),
         "perguntas_respostas": result.get("perguntas_respostas", []),
-        "usos_hoje": usage["count"],
+        "usos_hoje": usage["day_count"],
         "limite": LIMIT_PER_DAY,
+        "usos_semana": usage["week_count"],
+        "limite_semana": LIMIT_PER_WEEK,
+        "usos_mes": usage["month_count"],
+        "limite_mes": LIMIT_PER_MONTH,
         "segundos": round(time.time() - t0, 1),
     }
