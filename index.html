@@ -294,7 +294,10 @@ function clearAll(){
   setStatus("");
 }
 
-showApp();
+// Always show the password gate on load; the API validates the password.
+// A stored password no longer auto-opens the app (avoids stale localStorage).
+$("gate").style.display = "flex";
+$("app").style.display = "none";
 $("pw").addEventListener("keydown", e => { if(e.key === "Enter") tryEnter(); });
 </script>
 </body>
