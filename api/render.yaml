@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: trilayer-imoveis-api
+    runtime: python
+    rootDir: api
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: API_PASSWORD
+        sync: false
+      - key: LIMIT_PER_DAY
+        value: "20"
