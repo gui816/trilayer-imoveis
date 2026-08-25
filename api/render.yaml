@@ -22,6 +22,6 @@ services:
       - key: MAX_ACTIVE_SESSIONS
         value: "1"
       - key: DEMO_LIMIT_PER_DAY
-        value: "2"
+        value: "1"
       - key: DEMO_IP_LIMIT_PER_DAY
         value: "10"

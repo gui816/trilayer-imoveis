@@ -12,7 +12,7 @@ Env vars:
   LIMIT_PER_MONTH      (default 200)
   MAX_ACTIVE_SESSIONS  (default 1) — 1 = unicidade de uso: novo login revoga as sessões
                                      anteriores, por isso a conta não pode ser partilhada
-  DEMO_LIMIT_PER_DAY   (default 2)  — descrições demo grátis por dia e por dispositivo
+  DEMO_LIMIT_PER_DAY   (default 1)  — descrições demo grátis por dia e por dispositivo
   DEMO_IP_LIMIT_PER_DAY (default 10) — teto de segurança por IP (protege contra novo device_id)
   GEMINI_MODEL         (default gemini-2.5-flash)
 
@@ -49,7 +49,7 @@ LIMIT_PER_DAY = int(os.environ.get("LIMIT_PER_DAY", "20"))
 LIMIT_PER_WEEK = int(os.environ.get("LIMIT_PER_WEEK", "50"))
 LIMIT_PER_MONTH = int(os.environ.get("LIMIT_PER_MONTH", "200"))
 MAX_ACTIVE_SESSIONS = int(os.environ.get("MAX_ACTIVE_SESSIONS", "1"))
-DEMO_LIMIT_PER_DAY = int(os.environ.get("DEMO_LIMIT_PER_DAY", "2"))
+DEMO_LIMIT_PER_DAY = int(os.environ.get("DEMO_LIMIT_PER_DAY", "1"))
 DEMO_IP_LIMIT_PER_DAY = int(os.environ.get("DEMO_IP_LIMIT_PER_DAY", "10"))
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -325,9 +325,10 @@ def generate(req: GenerateRequest, request: Request):
             }
             usage = _roll_usage(acc["usage"])
             if usage["day_count"] >= DEMO_LIMIT_PER_DAY:
+                _un = "descrição" if DEMO_LIMIT_PER_DAY == 1 else "descrições"
                 raise HTTPException(
                     402,
-                    f"Demo grátis esgotada ({DEMO_LIMIT_PER_DAY} descrições por dia e por dispositivo). Cria uma conta para continuar.",
+                    f"Demo grátis esgotada ({DEMO_LIMIT_PER_DAY} {_un} por dia e por dispositivo). Cria uma conta para continuar.",
                 )
             if _ip_count(ip) >= DEMO_IP_LIMIT_PER_DAY:
                 raise HTTPException(

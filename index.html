@@ -146,7 +146,7 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <div class="gate-err" id="pwErr"></div>
     <button class="btn" onclick="login()">Entrar</button>
     <div class="gate-or">ou</div>
-    <button class="btn btn-ghost" onclick="enterDemo()">🎁 Experimentar demo grátis (2 descrições)</button>
+    <button class="btn btn-ghost" onclick="enterDemo()">🎁 Experimentar demo grátis (1 descrição)</button>
   </div>
 </div>
 
@@ -348,7 +348,9 @@ async function refreshDemoBanner(){
     const left = Math.max(0, j.limite - j.usos_hoje);
     $("demoBanner").style.display = "block";
     $("demoBanner").textContent = left > 0
-      ? "🎁 Modo demo: " + left + " de " + j.limite + " descrições grátis hoje neste dispositivo."
+      ? (left === 1
+        ? "🎁 Modo demo: tens 1 descrição grátis hoje neste dispositivo."
+        : "🎁 Modo demo: " + left + " de " + j.limite + " descrições grátis hoje neste dispositivo.")
       : "Demo grátis esgotada hoje. Cria uma conta para continuar.";
   }catch(e){}
 }
