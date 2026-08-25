@@ -137,9 +137,10 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
   <div class="gate-card">
     <div class="gate-logo">Casa que Vende</div>
     <div class="gate-sub">Transforma anúncios em visitas — acesso de teste</div>
-    <input id="pw" type="password" class="gate-input" placeholder="Password" autocomplete="off"/>
+    <input id="lu" type="text" class="gate-input" placeholder="Utilizador" autocomplete="username"/>
+    <input id="pw" type="password" class="gate-input" placeholder="Password" autocomplete="current-password"/>
     <div class="gate-err" id="pwErr"></div>
-    <button class="btn" onclick="tryEnter()">Entrar</button>
+    <button class="btn" onclick="login()">Entrar</button>
   </div>
 </div>
 
@@ -147,7 +148,10 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 <div id="app">
   <nav>
     <div class="logo">Casa que Vende</div>
-    <div class="note">PT-PT · pronto para Idealista/OLX/CASAFARI · versão EN incluída</div>
+    <div style="display:flex;align-items:center;gap:.8rem">
+      <span class="note" id="navUser"></span>
+      <button class="btn-sm" onclick="logout()">Sair</button>
+    </div>
   </nav>
 
   <div class="hero-grid">
@@ -263,30 +267,65 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 <script>
 // ── CONFIG ─────────────────────────────────────────────
 const API_URL = "https://YOUR-API-URL.onrender.com"; // TODO: trocar pelo URL do Render
-const PASSWORD_KEY = "tl_pw";
+const SESSION_KEY = "tl_sess";
+const DEVICE_KEY = "tl_dev";
 // ───────────────────────────────────────────────────────
 
 const $ = id => document.getElementById(id);
 
-function tryEnter(){
+function deviceId(){
+  let d = localStorage.getItem(DEVICE_KEY);
+  if(!d){
+    d = (crypto.randomUUID ? crypto.randomUUID() : "dev-" + Date.now() + "-" + Math.random().toString(16).slice(2));
+    localStorage.setItem(DEVICE_KEY, d);
+  }
+  return d;
+}
+
+function getSession(){ try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || null; } catch(e){ return null; } }
+function setSession(user, token){ localStorage.setItem(SESSION_KEY, JSON.stringify({user, token})); }
+function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+
+async function login(){
+  const user = $("lu").value.trim();
   const pw = $("pw").value.trim();
-  if(!pw){ $("pwErr").textContent = "Introduz a password."; return; }
-  localStorage.setItem(PASSWORD_KEY, pw);
-  showApp();
+  if(!user || !pw){ $("pwErr").textContent = "Introduz utilizador e password."; return; }
+  $("pwErr").textContent = "";
+  try{
+    const r = await fetch(API_URL + "/api/login", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ user, password: pw, device_id: deviceId() })
+    });
+    const j = await r.json();
+    if(!r.ok){ $("pwErr").textContent = j.detail || "Erro ao iniciar sessão."; return; }
+    setSession(j.user, j.token);
+    showApp();
+  }catch(e){
+    $("pwErr").textContent = "Erro de rede. Verifica se a API está online.";
+  }
+}
+
+function logout(){
+  clearSession();
+  $("gate").style.display = "flex";
+  $("app").style.display = "none";
+  $("pw").value = "";
 }
 
 function showApp(){
-  const pw = localStorage.getItem(PASSWORD_KEY);
-  if(!pw){ $("gate").style.display = "flex"; return; }
-  // validação acontece na API; a gate é só para não expor o formulário
+  const s = getSession();
+  if(!s || !s.token){ $("gate").style.display = "flex"; return; }
   $("gate").style.display = "none";
   $("app").style.display = "block";
+  $("navUser").textContent = s.user;
 }
 
 function setStatus(msg, cls){ const s = $("status"); s.textContent = msg; s.className = cls || ""; }
 
 async function generate(){
-  const pw = localStorage.getItem(PASSWORD_KEY);
+  const s = getSession();
+  if(!s || !s.token){ logout(); $("pwErr").textContent = "Inicia sessão primeiro."; return; }
   const dados = {
     tipologia: $("f_tipo").value.trim(),
     preco: $("f_preco").value.trim(),
@@ -303,12 +342,12 @@ async function generate(){
     const r = await fetch(API_URL + "/api/generate", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ password: pw, dados })
+      body: JSON.stringify({ token: s.token, dados })
     });
     const j = await r.json();
     if(!r.ok){
-      if(r.status === 402){ setStatus(j.detail || "Limite diário atingido.", "err"); }
-      else if(r.status === 401){ localStorage.removeItem(PASSWORD_KEY); $("gate").style.display = "flex"; setStatus(""); }
+      if(r.status === 402){ setStatus(j.detail || "Limite atingido.", "err"); }
+      else if(r.status === 401){ clearSession(); logout(); $("pwErr").textContent = "Sessão expirada ou conta em uso noutro dispositivo."; }
       else { setStatus(j.detail || "Erro ao gerar. Tenta novamente.", "err"); }
       return;
     }
@@ -364,11 +403,11 @@ function clearAll(){
   setStatus("");
 }
 
-// Always show the password gate on load; the API validates the password.
-// A stored password no longer auto-opens the app (avoids stale localStorage).
-$("gate").style.display = "flex";
-$("app").style.display = "none";
-$("pw").addEventListener("keydown", e => { if(e.key === "Enter") tryEnter(); });
+// Auto-login se houver sessão guardada; caso contrário mostra a gate.
+const s0 = getSession();
+if(s0 && s0.token){ showApp(); } else { $("gate").style.display = "flex"; $("app").style.display = "none"; }
+$("pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
+$("lu").addEventListener("keydown", e => { if(e.key === "Enter") $("pw").focus(); });
 </script>
 </body>
 </html>

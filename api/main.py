@@ -4,17 +4,26 @@ Gera descrições de imóveis PT-PT (e EN) via Gemini.
 
 Deploy: Render (free) — uvicorn main:app
 Env vars:
-  GEMINI_API_KEY  (obrigatório)
-  API_PASSWORD    (password de acesso de teste)
-  LIMIT_PER_DAY   (default 20)
-  LIMIT_PER_WEEK  (default 50)
-  LIMIT_PER_MONTH (default 200)
-  GEMINI_MODEL    (default gemini-2.5-flash)
+  GEMINI_API_KEY       (obrigatório)
+  ADMIN_USER           (default "gui")      — conta inicial criada no primeiro boot
+  ADMIN_PASSWORD       (default "trilayer") — password da conta inicial
+  LIMIT_PER_DAY        (default 20)
+  LIMIT_PER_WEEK       (default 50)
+  LIMIT_PER_MONTH      (default 200)
+  MAX_ACTIVE_SESSIONS  (default 1) — 1 = unicidade de uso: novo login revoga as sessões
+                                     anteriores, por isso a conta não pode ser partilhada
+  GEMINI_MODEL         (default gemini-2.5-flash)
+
+Contas: users.json (hash PBKDF2-SHA256 das passwords e dos tokens; nunca plaintext).
+Uso: contadores por conta (dia/semana/mês), não globais.
 """
 
 import os
 import json
 import time
+import hashlib
+import secrets
+import threading
 from datetime import date
 
 import requests
@@ -31,12 +40,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-API_PASSWORD = os.environ.get("API_PASSWORD", "troca-esta-password")
+# ── Config ───────────────────────────────────────────────
+ADMIN_USER = os.environ.get("ADMIN_USER", "gui")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "trilayer")
 LIMIT_PER_DAY = int(os.environ.get("LIMIT_PER_DAY", "20"))
 LIMIT_PER_WEEK = int(os.environ.get("LIMIT_PER_WEEK", "50"))
 LIMIT_PER_MONTH = int(os.environ.get("LIMIT_PER_MONTH", "200"))
+MAX_ACTIVE_SESSIONS = int(os.environ.get("MAX_ACTIVE_SESSIONS", "1"))
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-USAGE_FILE = os.path.join(os.path.dirname(__file__), "usage.json")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+USERS_FILE = os.path.join(BASE_DIR, "users.json")
+
+_lock = threading.Lock()
 
 SYSTEM_PROMPT = """És um copywriter especialista em imobiliário português (Portugal, pt-PT).
 
@@ -75,38 +90,89 @@ class DadosImovel(BaseModel):
     publico: str = ""
 
 
-class GenerateRequest(BaseModel):
+class LoginRequest(BaseModel):
+    user: str
     password: str
+    device_id: str = ""
+
+
+class GenerateRequest(BaseModel):
+    token: str
     dados: DadosImovel
 
 
-def _week_key(d):
-    iso = d.isocalendar()
-    return f"{iso[0]}-W{iso[1]:02d}"
+# ── Helpers de segurança ─────────────────────────────────
+def _hash_secret(secret: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", secret.encode(), salt.encode(), 100_000).hex()
 
 
-def read_usage() -> dict:
+def _new_salt() -> str:
+    return secrets.token_hex(16)
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+# ── Persistência de contas ───────────────────────────────
+def _load_users() -> dict:
     try:
-        with open(USAGE_FILE) as f:
-            data = json.load(f)
+        with open(USERS_FILE) as f:
+            return json.load(f)
     except Exception:
-        data = {}
+        return {}
+
+
+def _save_users(data: dict) -> None:
+    with open(USERS_FILE, "w") as f:
+        json.dump(data, f, ensure_ascii=False, indent=1)
+
+
+def _ensure_admin() -> None:
+    """Cria a conta admin no primeiro boot se ainda não existir."""
+    with _lock:
+        users = _load_users()
+        if ADMIN_USER in users:
+            return
+        salt = _new_salt()
+        users[ADMIN_USER] = {
+            "password_salt": salt,
+            "password_hash": _hash_secret(ADMIN_PASSWORD, salt),
+            "sessions": [],
+            "usage": _fresh_usage(),
+        }
+        _save_users(users)
+
+
+def _fresh_usage() -> dict:
     today = date.today()
-    day, week, month = today.isoformat(), _week_key(today), today.strftime("%Y-%m")
-    if data.get("day") != day:
-        data["day"], data["day_count"] = day, 0
-    if data.get("week") != week:
-        data["week"], data["week_count"] = week, 0
-    if data.get("month") != month:
-        data["month"], data["month_count"] = month, 0
-    return data
+    iso = today.isocalendar()
+    return {
+        "day": today.isoformat(),
+        "day_count": 0,
+        "week": f"{iso[0]}-W{iso[1]:02d}",
+        "week_count": 0,
+        "month": today.strftime("%Y-%m"),
+        "month_count": 0,
+    }
 
 
-def write_usage(data: dict) -> None:
-    with open(USAGE_FILE, "w") as f:
-        json.dump(data, f)
+def _roll_usage(usage: dict) -> dict:
+    """Repõe os contadores cujo período já mudou."""
+    today = date.today()
+    iso = today.isocalendar()
+    week = f"{iso[0]}-W{iso[1]:02d}"
+    month = today.strftime("%Y-%m")
+    if usage.get("day") != today.isoformat():
+        usage["day"], usage["day_count"] = today.isoformat(), 0
+    if usage.get("week") != week:
+        usage["week"], usage["week_count"] = week, 0
+    if usage.get("month") != month:
+        usage["month"], usage["month_count"] = month, 0
+    return usage
 
 
+# ── Gemini ───────────────────────────────────────────────
 def call_gemini(prompt: str) -> str:
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
@@ -128,13 +194,11 @@ def call_gemini(prompt: str) -> str:
 
 def parse_json(text: str) -> dict:
     text = text.strip()
-    # remove fences de markdown se existirem
     if text.startswith("```"):
         text = text.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
     try:
         return json.loads(text)
     except Exception:
-        # fallback: extrair o primeiro objeto JSON
         start, end = text.find("{"), text.rfind("}")
         if start != -1 and end > start:
             return json.loads(text[start : end + 1])
@@ -154,32 +218,89 @@ def build_prompt(d: DadosImovel) -> str:
     return f"{SYSTEM_PROMPT}\n\nDADOS DO IMÓVEL:\n{linha}\nCaracterísticas: {carac}\n{pub}"
 
 
+# ── Endpoints ────────────────────────────────────────────
+@app.on_event("startup")
+def _startup():
+    _ensure_admin()
+
+
 @app.get("/api/health")
 def health():
     return {"ok": True}
 
 
+@app.post("/api/login")
+def login(req: LoginRequest):
+    user = req.user.strip().lower()
+    with _lock:
+        users = _load_users()
+        acc = users.get(user)
+        if not acc:
+            raise HTTPException(401, "Utilizador ou password incorretos.")
+        if _hash_secret(req.password, acc["password_salt"]) != acc["password_hash"]:
+            raise HTTPException(401, "Utilizador ou password incorretos.")
+
+        token = secrets.token_urlsafe(32)
+        token_hex = _token_hash(token)
+        now = time.time()
+        session = {"token_hash": token_hex, "device_id": req.device_id, "created": now, "last_seen": now}
+
+        # Unicidade de uso: mantém apenas as MAX_ACTIVE_SESSIONS mais recentes.
+        # Com default 1, qualquer novo login revoga as sessões anteriores — a conta
+        # não pode ser usada em dois dispositivos ao mesmo tempo (nem partilhada).
+        acc["sessions"] = acc["sessions"] or []
+        acc["sessions"].append(session)
+        acc["sessions"] = sorted(acc["sessions"], key=lambda s: s["last_seen"], reverse=True)[:MAX_ACTIVE_SESSIONS]
+        usage = _roll_usage(acc.get("usage") or _fresh_usage())
+        acc["usage"] = usage
+        _save_users(users)
+
+    return {
+        "token": token,
+        "user": user,
+        "limite": LIMIT_PER_DAY,
+        "limite_semana": LIMIT_PER_WEEK,
+        "limite_mes": LIMIT_PER_MONTH,
+        "usos_hoje": usage["day_count"],
+        "usos_semana": usage["week_count"],
+        "usos_mes": usage["month_count"],
+    }
+
+
 @app.post("/api/generate")
 def generate(req: GenerateRequest):
-    if req.password != API_PASSWORD:
-        raise HTTPException(401, "Password incorreta.")
+    token_hex = _token_hash(req.token)
+    with _lock:
+        users = _load_users()
+        acc = None
+        for a in users.values():
+            for s in a.get("sessions", []):
+                if s["token_hash"] == token_hex:
+                    acc = a
+                    break
+            if acc:
+                break
+        if not acc:
+            raise HTTPException(401, "Sessão expirada ou conta em uso noutro dispositivo. Inicia sessão novamente.")
+        s["last_seen"] = time.time()
+        usage = _roll_usage(acc.get("usage") or _fresh_usage())
+        acc["usage"] = usage
 
-    usage = read_usage()
-    if usage["day_count"] >= LIMIT_PER_DAY:
-        raise HTTPException(402, f"Limite diário atingido ({LIMIT_PER_DAY} descrições). Volta amanhã ou assina o plano ilimitado.")
-    if usage["week_count"] >= LIMIT_PER_WEEK:
-        raise HTTPException(402, f"Limite semanal atingido ({LIMIT_PER_WEEK} descrições). Volta na próxima semana ou assina o plano ilimitado.")
-    if usage["month_count"] >= LIMIT_PER_MONTH:
-        raise HTTPException(402, f"Limite mensal atingido ({LIMIT_PER_MONTH} descrições). Volta no próximo mês ou assina o plano ilimitado.")
+        if usage["day_count"] >= LIMIT_PER_DAY:
+            raise HTTPException(402, f"Limite diário atingido ({LIMIT_PER_DAY} descrições). Volta amanhã ou assina o plano ilimitado.")
+        if usage["week_count"] >= LIMIT_PER_WEEK:
+            raise HTTPException(402, f"Limite semanal atingido ({LIMIT_PER_WEEK} descrições). Volta na próxima semana ou assina o plano ilimitado.")
+        if usage["month_count"] >= LIMIT_PER_MONTH:
+            raise HTTPException(402, f"Limite mensal atingido ({LIMIT_PER_MONTH} descrições). Volta no próximo mês ou assina o plano ilimitado.")
 
-    t0 = time.time()
-    raw = call_gemini(build_prompt(req.dados))
-    result = parse_json(raw)
+        t0 = time.time()
+        raw = call_gemini(build_prompt(req.dados))
+        result = parse_json(raw)
 
-    usage["day_count"] += 1
-    usage["week_count"] += 1
-    usage["month_count"] += 1
-    write_usage(usage)
+        usage["day_count"] += 1
+        usage["week_count"] += 1
+        usage["month_count"] += 1
+        _save_users(users)
 
     return {
         "titulo_seo": result.get("titulo_seo", ""),

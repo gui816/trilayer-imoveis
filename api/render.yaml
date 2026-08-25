@@ -9,7 +9,15 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false
-      - key: API_PASSWORD
+      - key: ADMIN_USER
+        value: gui
+      - key: ADMIN_PASSWORD
         sync: false
       - key: LIMIT_PER_DAY
         value: "20"
+      - key: LIMIT_PER_WEEK
+        value: "50"
+      - key: LIMIT_PER_MONTH
+        value: "200"
+      - key: MAX_ACTIVE_SESSIONS
+        value: "1"
