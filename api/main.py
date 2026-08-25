@@ -12,6 +12,8 @@ Env vars:
   LIMIT_PER_MONTH      (default 200)
   MAX_ACTIVE_SESSIONS  (default 1) — 1 = unicidade de uso: novo login revoga as sessões
                                      anteriores, por isso a conta não pode ser partilhada
+  DEMO_LIMIT_PER_DAY   (default 2)  — descrições demo grátis por dia e por dispositivo
+  DEMO_IP_LIMIT_PER_DAY (default 10) — teto de segurança por IP (protege contra novo device_id)
   GEMINI_MODEL         (default gemini-2.5-flash)
 
 Contas: users.json (hash PBKDF2-SHA256 das passwords e dos tokens; nunca plaintext).
@@ -27,7 +29,7 @@ import threading
 from datetime import date
 
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -47,9 +49,12 @@ LIMIT_PER_DAY = int(os.environ.get("LIMIT_PER_DAY", "20"))
 LIMIT_PER_WEEK = int(os.environ.get("LIMIT_PER_WEEK", "50"))
 LIMIT_PER_MONTH = int(os.environ.get("LIMIT_PER_MONTH", "200"))
 MAX_ACTIVE_SESSIONS = int(os.environ.get("MAX_ACTIVE_SESSIONS", "1"))
+DEMO_LIMIT_PER_DAY = int(os.environ.get("DEMO_LIMIT_PER_DAY", "2"))
+DEMO_IP_LIMIT_PER_DAY = int(os.environ.get("DEMO_IP_LIMIT_PER_DAY", "10"))
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
+IP_USAGE_FILE = os.path.join(BASE_DIR, "ip_usage.json")
 
 _lock = threading.Lock()
 
@@ -97,7 +102,8 @@ class LoginRequest(BaseModel):
 
 
 class GenerateRequest(BaseModel):
-    token: str
+    token: str = ""
+    device_id: str = ""
     dados: DadosImovel
 
 
@@ -170,6 +176,38 @@ def _roll_usage(usage: dict) -> dict:
     if usage.get("month") != month:
         usage["month"], usage["month_count"] = month, 0
     return usage
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _ip_count(ip: str) -> int:
+    try:
+        with open(IP_USAGE_FILE) as f:
+            data = json.load(f)
+    except Exception:
+        return 0
+    if data.get("day") != date.today().isoformat():
+        return 0
+    return data.get("ips", {}).get(ip, 0)
+
+
+def _bump_ip(ip: str) -> None:
+    try:
+        with open(IP_USAGE_FILE) as f:
+            data = json.load(f)
+    except Exception:
+        data = {}
+    today = date.today().isoformat()
+    if data.get("day") != today:
+        data = {"day": today, "ips": {}}
+    data["ips"][ip] = data["ips"].get(ip, 0) + 1
+    with open(IP_USAGE_FILE, "w") as f:
+        json.dump(data, f)
 
 
 # ── Gemini ───────────────────────────────────────────────
@@ -268,7 +306,57 @@ def login(req: LoginRequest):
 
 
 @app.post("/api/generate")
-def generate(req: GenerateRequest):
+def generate(req: GenerateRequest, request: Request):
+    t0 = time.time()
+
+    # ── Modo demo (anónimo): sem token, identificado por device_id ──
+    if not req.token:
+        if not req.device_id:
+            raise HTTPException(400, "Falta o identificador do dispositivo (device_id).")
+        ip = _client_ip(request)
+        key = "demo:" + req.device_id
+        with _lock:
+            users = _load_users()
+            acc = users.get(key) or {
+                "password_salt": "",
+                "password_hash": "",
+                "sessions": [],
+                "usage": _fresh_usage(),
+            }
+            usage = _roll_usage(acc["usage"])
+            if usage["day_count"] >= DEMO_LIMIT_PER_DAY:
+                raise HTTPException(
+                    402,
+                    f"Demo grátis esgotada ({DEMO_LIMIT_PER_DAY} descrições por dia e por dispositivo). Cria uma conta para continuar.",
+                )
+            if _ip_count(ip) >= DEMO_IP_LIMIT_PER_DAY:
+                raise HTTPException(
+                    429,
+                    "Demasiadas utilizações demo a partir desta rede hoje. Cria uma conta para continuar.",
+                )
+
+            raw = call_gemini(build_prompt(req.dados))
+            result = parse_json(raw)
+
+            usage["day_count"] += 1
+            acc["usage"] = usage
+            users[key] = acc
+            _save_users(users)
+            _bump_ip(ip)
+
+        return {
+            "titulo_seo": result.get("titulo_seo", ""),
+            "descricao_curta": result.get("descricao_curta", ""),
+            "descricao_longa": result.get("descricao_longa", ""),
+            "descricao_en": result.get("descricao_en", ""),
+            "perguntas_respostas": result.get("perguntas_respostas", []),
+            "demo": True,
+            "usos_hoje": usage["day_count"],
+            "limite": DEMO_LIMIT_PER_DAY,
+            "segundos": round(time.time() - t0, 1),
+        }
+
+    # ── Modo conta: token de sessão ──
     token_hex = _token_hash(req.token)
     with _lock:
         users = _load_users()
@@ -293,7 +381,6 @@ def generate(req: GenerateRequest):
         if usage["month_count"] >= LIMIT_PER_MONTH:
             raise HTTPException(402, f"Limite mensal atingido ({LIMIT_PER_MONTH} descrições). Volta no próximo mês ou assina o plano ilimitado.")
 
-        t0 = time.time()
         raw = call_gemini(build_prompt(req.dados))
         result = parse_json(raw)
 
@@ -308,6 +395,7 @@ def generate(req: GenerateRequest):
         "descricao_longa": result.get("descricao_longa", ""),
         "descricao_en": result.get("descricao_en", ""),
         "perguntas_respostas": result.get("perguntas_respostas", []),
+        "demo": False,
         "usos_hoje": usage["day_count"],
         "limite": LIMIT_PER_DAY,
         "usos_semana": usage["week_count"],
@@ -316,3 +404,15 @@ def generate(req: GenerateRequest):
         "limite_mes": LIMIT_PER_MONTH,
         "segundos": round(time.time() - t0, 1),
     }
+
+
+@app.get("/api/demo")
+def demo_status(device_id: str = ""):
+    """Devolve o estado da demo para um dispositivo (para o aviso no front)."""
+    if not device_id:
+        return {"demo": True, "usos_hoje": 0, "limite": DEMO_LIMIT_PER_DAY}
+    key = "demo:" + device_id
+    users = _load_users()
+    acc = users.get(key)
+    usage = _roll_usage(acc["usage"]) if acc else _fresh_usage()
+    return {"demo": True, "usos_hoje": usage["day_count"], "limite": DEMO_LIMIT_PER_DAY}

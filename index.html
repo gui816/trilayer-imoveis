@@ -33,6 +33,9 @@ a{color:#125548}
 .gate-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:.85rem 1rem;color:var(--text);font-size:.95rem;outline:none;margin-bottom:.9rem}
 .gate-input:focus{border-color:var(--v)}
 .gate-err{color:#f87171;font-size:.8rem;min-height:1.2em;margin-bottom:.4rem}
+.gate-or{color:var(--sub);font-size:.75rem;margin:.9rem 0 .7rem;text-transform:uppercase;letter-spacing:.08em}
+.btn-ghost{background:transparent;border:1px solid var(--border);color:var(--v);width:100%}
+.btn-ghost:hover{background:rgba(23,107,87,.06);border-color:rgba(23,107,87,.4)}
 .btn{background:var(--v);color:#fff;border:none;border-radius:9px;padding:.85rem 1.4rem;font-weight:600;font-size:.9rem;cursor:pointer;width:100%;transition:all .2s}
 .btn:hover{background:var(--v2)}
 
@@ -102,6 +105,7 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 .hero-media .tag{position:absolute;left:12px;bottom:12px;background:rgba(255,255,255,.93);color:#2a2520;font-size:.72rem;font-weight:700;padding:.4rem .8rem;border-radius:99px;letter-spacing:.02em;box-shadow:0 4px 12px rgba(42,37,32,.14)}
 .cta-row{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-top:1.3rem}
 .cta-note{font-size:.8rem;color:var(--sub)}
+.demo-banner{background:rgba(201,151,63,.12);border:1px solid rgba(185,138,47,.4);color:#8a6a24;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
 @media(max-width:860px){.hero-grid{grid-template-columns:1fr}.hero-media{order:-1}}
 
 /* ── PORTALS STRIP ── */
@@ -141,6 +145,8 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <input id="pw" type="password" class="gate-input" placeholder="Password" autocomplete="current-password"/>
     <div class="gate-err" id="pwErr"></div>
     <button class="btn" onclick="login()">Entrar</button>
+    <div class="gate-or">ou</div>
+    <button class="btn btn-ghost" onclick="enterDemo()">🎁 Experimentar demo grátis (2 descrições)</button>
   </div>
 </div>
 
@@ -154,12 +160,14 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     </div>
   </nav>
 
+  <div id="demoBanner" class="demo-banner" style="display:none"></div>
+
   <div class="hero-grid">
     <div>
       <h1 class="hero-h">Em 1 minuto, <em>transforma anúncios em visitas</em></h1>
       <p class="hero-p">Dá-nos os dados do imóvel e recebe um anúncio completo em português de Portugal: título com SEO, descrição curta e longa, versão em inglês para compradores estrangeiros e respostas às perguntas mais frequentes. Sem pt-BR, sem enchimento — pronto a publicar no Idealista, OLX, CASAFARI ou no teu site.</p>
       <div class="cta-row">
-        <button class="btn" style="width:auto" onclick="document.getElementById('form-card').scrollIntoView({behavior:'smooth'})">⚡ Experimentar agora</button>
+        <button class="btn" style="width:auto" onclick="ctaDemo()">⚡ Experimentar agora</button>
         <span class="cta-note">Grátis durante o teste · sem cartão de crédito</span>
       </div>
     </div>
@@ -314,18 +322,42 @@ function logout(){
 }
 
 function showApp(){
-  const s = getSession();
-  if(!s || !s.token){ $("gate").style.display = "flex"; return; }
   $("gate").style.display = "none";
   $("app").style.display = "block";
-  $("navUser").textContent = s.user;
+  const s = getSession();
+  $("navUser").textContent = (s && s.user) ? s.user : "demo";
+  if(!s || !s.token) refreshDemoBanner();
+}
+
+function enterDemo(){
+  clearSession();
+  showApp();
+}
+
+function ctaDemo(){
+  const s = getSession();
+  if(!s || !s.token) enterDemo();
+  document.getElementById("form-card").scrollIntoView({behavior:"smooth"});
+}
+
+async function refreshDemoBanner(){
+  try{
+    const r = await fetch(API_URL + "/api/demo?device_id=" + encodeURIComponent(deviceId()));
+    if(!r.ok) return;
+    const j = await r.json();
+    const left = Math.max(0, j.limite - j.usos_hoje);
+    $("demoBanner").style.display = "block";
+    $("demoBanner").textContent = left > 0
+      ? "🎁 Modo demo: " + left + " de " + j.limite + " descrições grátis hoje neste dispositivo."
+      : "Demo grátis esgotada hoje. Cria uma conta para continuar.";
+  }catch(e){}
 }
 
 function setStatus(msg, cls){ const s = $("status"); s.textContent = msg; s.className = cls || ""; }
 
 async function generate(){
   const s = getSession();
-  if(!s || !s.token){ logout(); $("pwErr").textContent = "Inicia sessão primeiro."; return; }
+  const isDemo = !(s && s.token);
   const dados = {
     tipologia: $("f_tipo").value.trim(),
     preco: $("f_preco").value.trim(),
@@ -342,16 +374,17 @@ async function generate(){
     const r = await fetch(API_URL + "/api/generate", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({ token: s.token, dados })
+      body: JSON.stringify(isDemo ? { device_id: deviceId(), dados } : { token: s.token, dados })
     });
     const j = await r.json();
     if(!r.ok){
-      if(r.status === 402){ setStatus(j.detail || "Limite atingido.", "err"); }
+      if(r.status === 402){ setStatus(j.detail || "Limite atingido.", "err"); if(isDemo) refreshDemoBanner(); }
       else if(r.status === 401){ clearSession(); logout(); $("pwErr").textContent = "Sessão expirada ou conta em uso noutro dispositivo."; }
       else { setStatus(j.detail || "Erro ao gerar. Tenta novamente.", "err"); }
       return;
     }
     render(j);
+    if(j.demo) refreshDemoBanner();
     setStatus("✓ Pronto em " + (j.segundos || "?") + "s", "ok");
   }catch(e){
     setStatus("Erro de rede. Verifica se a API está online.", "err");
@@ -360,7 +393,9 @@ async function generate(){
 
 function render(j){
   $("results").style.display = "block";
-  $("usage").textContent = "Hoje " + j.usos_hoje + "/" + j.limite + " · Semana " + j.usos_semana + "/" + j.limite_semana + " · Mês " + j.usos_mes + "/" + j.limite_mes;
+  $("usage").textContent = j.demo
+    ? "Demo hoje: " + j.usos_hoje + "/" + j.limite
+    : "Hoje " + j.usos_hoje + "/" + j.limite + " · Semana " + j.usos_semana + "/" + j.limite_semana + " · Mês " + j.usos_mes + "/" + j.limite_mes;
   $("r_title").innerHTML = block("Título (SEO)", j.titulo_seo);
   $("r_short").innerHTML = block("Descrição curta", j.descricao_curta);
   $("r_long").innerHTML = block("Descrição longa PT-PT", j.descricao_longa);
@@ -403,7 +438,7 @@ function clearAll(){
   setStatus("");
 }
 
-// Auto-login se houver sessão guardada; caso contrário mostra a gate.
+// Auto-login se houver sessão guardada; caso contrário mostra a gate (com demo).
 const s0 = getSession();
 if(s0 && s0.token){ showApp(); } else { $("gate").style.display = "flex"; $("app").style.display = "none"; }
 $("pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
