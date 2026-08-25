@@ -13,7 +13,7 @@ Env vars:
   MAX_ACTIVE_SESSIONS  (default 1) — 1 = unicidade de uso: novo login revoga as sessões
                                      anteriores, por isso a conta não pode ser partilhada
   DEMO_LIMIT_PER_DAY   (default 1)  — descrições demo grátis por dia e por dispositivo
-  DEMO_IP_LIMIT_PER_DAY (default 10) — teto de segurança por IP (protege contra novo device_id)
+  DEMO_IP_LIMIT_PER_DAY (default 2)  — teto de segurança por IP (protege contra novo device_id)
   GEMINI_MODEL         (default gemini-2.5-flash)
 
 Contas: users.json (hash PBKDF2-SHA256 das passwords e dos tokens; nunca plaintext).
@@ -50,7 +50,7 @@ LIMIT_PER_WEEK = int(os.environ.get("LIMIT_PER_WEEK", "50"))
 LIMIT_PER_MONTH = int(os.environ.get("LIMIT_PER_MONTH", "200"))
 MAX_ACTIVE_SESSIONS = int(os.environ.get("MAX_ACTIVE_SESSIONS", "1"))
 DEMO_LIMIT_PER_DAY = int(os.environ.get("DEMO_LIMIT_PER_DAY", "1"))
-DEMO_IP_LIMIT_PER_DAY = int(os.environ.get("DEMO_IP_LIMIT_PER_DAY", "10"))
+DEMO_IP_LIMIT_PER_DAY = int(os.environ.get("DEMO_IP_LIMIT_PER_DAY", "2"))
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
@@ -333,7 +333,7 @@ def generate(req: GenerateRequest, request: Request):
             if _ip_count(ip) >= DEMO_IP_LIMIT_PER_DAY:
                 raise HTTPException(
                     429,
-                    "Demasiadas utilizações demo a partir desta rede hoje. Cria uma conta para continuar.",
+                    f"Limite de demo por rede atingido ({DEMO_IP_LIMIT_PER_DAY} descrições por dia a partir deste IP). Cria uma conta para continuar.",
                 )
 
             raw = call_gemini(build_prompt(req.dados))

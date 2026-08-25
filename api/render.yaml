@@ -24,4 +24,4 @@ services:
       - key: DEMO_LIMIT_PER_DAY
         value: "1"
       - key: DEMO_IP_LIMIT_PER_DAY
-        value: "10"
+        value: "2"

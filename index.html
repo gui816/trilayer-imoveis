@@ -381,6 +381,7 @@ async function generate(){
     const j = await r.json();
     if(!r.ok){
       if(r.status === 402){ setStatus(j.detail || "Limite atingido.", "err"); if(isDemo) refreshDemoBanner(); }
+      else if(r.status === 429){ setStatus(j.detail || "Limite de demo por rede atingido. Cria uma conta para continuar.", "err"); }
       else if(r.status === 401){ clearSession(); logout(); $("pwErr").textContent = "Sessão expirada ou conta em uso noutro dispositivo."; }
       else { setStatus(j.detail || "Erro ao gerar. Tenta novamente.", "err"); }
       return;
