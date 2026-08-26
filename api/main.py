@@ -4,17 +4,27 @@ Gera descrições de imóveis PT-PT (e EN) via Gemini.
 
 Deploy: Render (free) — uvicorn main:app
 Env vars:
-  GEMINI_API_KEY       (obrigatório)
-  ADMIN_USER           (default "gui")      — conta inicial criada no primeiro boot
-  ADMIN_PASSWORD       (default "trilayer") — password da conta inicial
-  LIMIT_PER_DAY        (default 20)
-  LIMIT_PER_WEEK       (default 50)
-  LIMIT_PER_MONTH      (default 200)
-  MAX_ACTIVE_SESSIONS  (default 1) — 1 = unicidade de uso: novo login revoga as sessões
-                                     anteriores, por isso a conta não pode ser partilhada
-  DEMO_LIMIT_PER_DAY   (default 1)  — descrições demo grátis por dia e por dispositivo
-  DEMO_IP_LIMIT_PER_DAY (default 2)  — teto de segurança por IP (protege contra novo device_id)
-  GEMINI_MODEL         (default gemini-2.5-flash)
+  GEMINI_API_KEY        (obrigatório)
+  ADMIN_USER            (default "gui")      — conta inicial criada no primeiro boot
+  ADMIN_PASSWORD        (default "trilayer") — password da conta inicial
+  STRIPE_SECRET_KEY     (default "") — chave secreta Stripe (sk_test_... / sk_live_...)
+  STRIPE_WEBHOOK_SECRET (default "") — assinatura do webhook (Dashboard → Webhooks)
+  SITE_URL              (default https://gui816.github.io/trilayer-imoveis/) — para success/cancel do Checkout
+  BACKOFFICE_PASSWORD   (default = ADMIN_PASSWORD) — acesso ao /backoffice
+  MAX_ACTIVE_SESSIONS   (default 1) — 1 = unicidade de uso: novo login revoga as sessões
+                                      anteriores, por isso a conta não pode ser partilhada
+  DEMO_LIMIT_PER_DAY    (default 2)  — descrições demo grátis por dia e por dispositivo
+  DEMO_IP_LIMIT_PER_DAY (default 10) — teto de segurança por IP (protege contra novo device_id)
+  GEMINI_MODEL          (default gemini-2.5-flash)
+  TZ                    (default Europe/Lisbon)
+  ALLOW_UNSIGNED_WEBHOOK (default "0") — "1" permite webhook sem assinatura (SÓ para testes locais)
+
+Modelo de negócio — PASSES COM VALIDADE (pagamento único, sem subscrições):
+  day   €1,00  → 24h, máx. 20 descrições por dia
+  week  €4,99  → 7 dias, máx. 100 descrições por semana
+  month €9,99  → 30 dias, ilimitado
+  Compra em cima de compra acumula (valid_until = max(valid_until, agora) + duração)
+  e o tipo de passe sobe para o mais forte ativo. Sem reembolsos (consentimento no checkout).
 
 Contas: users.json (hash PBKDF2-SHA256 das passwords e dos tokens; nunca plaintext).
 Uso: contadores por conta (dia/semana/mês), não globais.
@@ -26,11 +36,14 @@ import time
 import hashlib
 import secrets
 import threading
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import requests
-from fastapi import FastAPI, HTTPException, Request
+import stripe
+from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 app = FastAPI(title="TriLayer Imóveis API")
@@ -45,18 +58,33 @@ app.add_middleware(
 # ── Config ───────────────────────────────────────────────
 ADMIN_USER = os.environ.get("ADMIN_USER", "gui")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "trilayer")
-LIMIT_PER_DAY = int(os.environ.get("LIMIT_PER_DAY", "20"))
-LIMIT_PER_WEEK = int(os.environ.get("LIMIT_PER_WEEK", "50"))
-LIMIT_PER_MONTH = int(os.environ.get("LIMIT_PER_MONTH", "200"))
+BACKOFFICE_PASSWORD = os.environ.get("BACKOFFICE_PASSWORD", ADMIN_PASSWORD)
 MAX_ACTIVE_SESSIONS = int(os.environ.get("MAX_ACTIVE_SESSIONS", "1"))
-DEMO_LIMIT_PER_DAY = int(os.environ.get("DEMO_LIMIT_PER_DAY", "1"))
-DEMO_IP_LIMIT_PER_DAY = int(os.environ.get("DEMO_IP_LIMIT_PER_DAY", "2"))
+DEMO_LIMIT_PER_DAY = int(os.environ.get("DEMO_LIMIT_PER_DAY", "2"))
+DEMO_IP_LIMIT_PER_DAY = int(os.environ.get("DEMO_IP_LIMIT_PER_DAY", "10"))
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+SITE_URL = os.environ.get("SITE_URL", "https://gui816.github.io/trilayer-imoveis/")
+ALLOW_UNSIGNED_WEBHOOK = os.environ.get("ALLOW_UNSIGNED_WEBHOOK", "0") == "1"
+LOCAL_TZ = ZoneInfo(os.environ.get("TZ", "Europe/Lisbon"))
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
 IP_USAGE_FILE = os.path.join(BASE_DIR, "ip_usage.json")
 
 _lock = threading.Lock()
+_bo_tokens = {}  # token de back-office → expira (em memória; reinicia com o processo)
+
+# ── Planos (passes com validade) ─────────────────────────
+# cap: (período_do_contador, máximo) — ("day", 20) limita o contador diário;
+# (None, None) = sem limite.
+PLANS = {
+    "day": {"label": "Diário", "amount_cents": 100, "duration_s": 24 * 3600, "cap": ("day", 20)},
+    "week": {"label": "Semanal", "amount_cents": 499, "duration_s": 7 * 24 * 3600, "cap": ("week", 100)},
+    "month": {"label": "Mensal", "amount_cents": 999, "duration_s": 30 * 24 * 3600, "cap": (None, None)},
+}
+PASS_RANK = {"day": 1, "week": 2, "month": 3}
 
 SYSTEM_PROMPT = """És um copywriter especialista em imobiliário português (Portugal, pt-PT).
 
@@ -112,10 +140,26 @@ class LoginRequest(BaseModel):
     device_id: str = ""
 
 
+class RegisterRequest(BaseModel):
+    user: str
+    password: str
+    device_id: str = ""
+
+
 class GenerateRequest(BaseModel):
     token: str = ""
     device_id: str = ""
     dados: DadosImovel
+
+
+class CheckoutRequest(BaseModel):
+    token: str
+    plan: str
+    consent: bool = False
+
+
+class BackofficeLogin(BaseModel):
+    password: str
 
 
 # ── Helpers de segurança ─────────────────────────────────
@@ -129,6 +173,12 @@ def _new_salt() -> str:
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _iso(epoch: float) -> str:
+    if not epoch:
+        return ""
+    return datetime.fromtimestamp(epoch, LOCAL_TZ).strftime("%d/%m/%Y %H:%M")
 
 
 # ── Persistência de contas ───────────────────────────────
@@ -157,12 +207,15 @@ def _ensure_admin() -> None:
             "password_hash": _hash_secret(ADMIN_PASSWORD, salt),
             "sessions": [],
             "usage": _fresh_usage(),
+            "pass": None,
+            "purchases": [],
+            "created": time.time(),
         }
         _save_users(users)
 
 
 def _fresh_usage() -> dict:
-    today = date.today()
+    today = _today()
     iso = today.isocalendar()
     return {
         "day": today.isoformat(),
@@ -174,9 +227,13 @@ def _fresh_usage() -> dict:
     }
 
 
+def _today():
+    return datetime.now(LOCAL_TZ).date()
+
+
 def _roll_usage(usage: dict) -> dict:
     """Repõe os contadores cujo período já mudou."""
-    today = date.today()
+    today = _today()
     iso = today.isocalendar()
     week = f"{iso[0]}-W{iso[1]:02d}"
     month = today.strftime("%Y-%m")
@@ -202,7 +259,7 @@ def _ip_count(ip: str) -> int:
             data = json.load(f)
     except Exception:
         return 0
-    if data.get("day") != date.today().isoformat():
+    if data.get("day") != _today().isoformat():
         return 0
     return data.get("ips", {}).get(ip, 0)
 
@@ -213,12 +270,60 @@ def _bump_ip(ip: str) -> None:
             data = json.load(f)
     except Exception:
         data = {}
-    today = date.today().isoformat()
+    today = _today().isoformat()
     if data.get("day") != today:
         data = {"day": today, "ips": {}}
     data["ips"][ip] = data["ips"].get(ip, 0) + 1
     with open(IP_USAGE_FILE, "w") as f:
         json.dump(data, f)
+
+
+def _find_by_token(users: dict, token: str):
+    """Devolve (user_key, account, session) para um token de sessão, ou (None, None, None)."""
+    token_hex = _token_hash(token)
+    for k, a in users.items():
+        for s in a.get("sessions", []):
+            if s["token_hash"] == token_hex:
+                return k, a, s
+    return None, None, None
+
+
+def _active_pass(acc: dict, now: float):
+    """Devolve (pass_type, valid_until) se houver passe ativo, senão (None, 0)."""
+    pt = acc.get("pass") or {}
+    valid_until = pt.get("valid_until", 0) or 0
+    if valid_until > now:
+        return pt.get("type"), valid_until
+    return None, 0
+
+
+# ── Stripe ───────────────────────────────────────────────
+def _ensure_stripe_prices() -> None:
+    """Cria o produto e os 3 preços no Stripe uma única vez (idempotente via metadata)."""
+    if not STRIPE_SECRET_KEY:
+        return
+    stripe.api_key = STRIPE_SECRET_KEY
+    product = None
+    for p in stripe.Product.list(limit=100).data:
+        if p.metadata.get("tl_product") == "1":
+            product = p
+            break
+    if not product:
+        product = stripe.Product.create(name="TriLayer Imóveis — Passes", metadata={"tl_product": "1"})
+    for plan, cfg in PLANS.items():
+        found = None
+        for pr in stripe.Price.list(product=product.id, limit=100).data:
+            if pr.metadata.get("tl_plan") == plan:
+                found = pr
+                break
+        if not found:
+            found = stripe.Price.create(
+                unit_amount=cfg["amount_cents"],
+                currency="eur",
+                product=product.id,
+                metadata={"tl_plan": plan},
+            )
+        cfg["price_id"] = found.id
 
 
 # ── Gemini ───────────────────────────────────────────────
@@ -272,11 +377,42 @@ def build_prompt(d: DadosImovel) -> str:
 @app.on_event("startup")
 def _startup():
     _ensure_admin()
+    _ensure_stripe_prices()
 
 
 @app.get("/api/health")
 def health():
     return {"ok": True}
+
+
+@app.post("/api/register")
+def register(req: RegisterRequest):
+    """Cria uma conta (necessária para comprar passes) e devolve sessão iniciada."""
+    user = req.user.strip().lower()
+    if not (3 <= len(user) <= 32) or not user.replace("_", "").replace("-", "").isalnum():
+        raise HTTPException(400, "Utilizador: 3-32 caracteres (letras, números, _ ou -).")
+    if len(req.password) < 8:
+        raise HTTPException(400, "A password tem de ter pelo menos 8 caracteres.")
+    if user.startswith("demo:"):
+        raise HTTPException(400, "Nome de utilizador inválido.")
+    with _lock:
+        users = _load_users()
+        if user in users:
+            raise HTTPException(409, "Esse utilizador já existe. Inicia sessão.")
+        salt = _new_salt()
+        token = secrets.token_urlsafe(32)
+        token_hex = _token_hash(token)
+        users[user] = {
+            "password_salt": salt,
+            "password_hash": _hash_secret(req.password, salt),
+            "sessions": [{"token_hash": token_hex, "device_id": req.device_id, "created": time.time(), "last_seen": time.time()}],
+            "usage": _fresh_usage(),
+            "pass": None,
+            "purchases": [],
+            "created": time.time(),
+        }
+        _save_users(users)
+    return {"token": token, "user": user}
 
 
 @app.post("/api/login")
@@ -301,19 +437,132 @@ def login(req: LoginRequest):
         acc["sessions"] = acc["sessions"] or []
         acc["sessions"].append(session)
         acc["sessions"] = sorted(acc["sessions"], key=lambda s: s["last_seen"], reverse=True)[:MAX_ACTIVE_SESSIONS]
+        acc["usage"] = _roll_usage(acc.get("usage") or _fresh_usage())
+        _save_users(users)
+
+    return {"token": token, "user": user}
+
+
+@app.post("/api/checkout")
+def checkout(req: CheckoutRequest):
+    """Cria uma sessão de Checkout Stripe para comprar um passe (pagamento único)."""
+    plan = req.plan.strip().lower()
+    if plan not in PLANS:
+        raise HTTPException(400, "Plano inválido. Escolhe day, week ou month.")
+    if not req.consent:
+        raise HTTPException(400, "É necessário aceitar a política de sem reembolsos para continuar.")
+    if not STRIPE_SECRET_KEY:
+        raise HTTPException(503, "Pagamentos ainda não configurados no servidor (falta STRIPE_SECRET_KEY).")
+
+    with _lock:
+        users = _load_users()
+        user_key, acc, _ = _find_by_token(users, req.token)
+        if not acc:
+            raise HTTPException(401, "Sessão expirada ou conta em uso noutro dispositivo. Inicia sessão novamente.")
+        if user_key == ADMIN_USER:
+            # O admin não compra passes — tem acesso sempre (bypass no /api/generate).
+            raise HTTPException(400, "A conta de administrador não precisa de passes.")
+
+        stripe.api_key = STRIPE_SECRET_KEY
+        try:
+            session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=[{"price": PLANS[plan]["price_id"], "quantity": 1}],
+                success_url=SITE_URL + "#comprado",
+                cancel_url=SITE_URL,
+                metadata={"user": user_key, "plan": plan, "consent": "true"},
+            )
+        except Exception as e:
+            raise HTTPException(502, f"Falha ao criar o pagamento no Stripe: {e}")
+
+        acc["pending"] = {"session_id": session.get("id"), "plan": plan, "created": time.time()}
+        _save_users(users)
+
+    return {"url": session["url"], "plan": plan}
+
+
+@app.post("/webhook/stripe")
+async def stripe_webhook(request: Request):
+    """Recebe eventos do Stripe. O único evento tratado: checkout.session.completed."""
+    payload = await request.body()
+    sig = request.headers.get("stripe-signature", "")
+
+    if STRIPE_WEBHOOK_SECRET:
+        try:
+            event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
+        except Exception:
+            raise HTTPException(400, "Assinatura do webhook inválida.")
+    elif ALLOW_UNSIGNED_WEBHOOK:
+        event = json.loads(payload)  # modo dev: sem validação (nunca em produção)
+    else:
+        raise HTTPException(503, "Webhook não configurado (falta STRIPE_WEBHOOK_SECRET).")
+
+    if event.get("type") != "checkout.session.completed":
+        return {"ok": True, "ignored": event.get("type")}
+
+    sess = event["data"]["object"]
+    metadata = sess.get("metadata") or {}
+    user_key = metadata.get("user", "")
+    plan = metadata.get("plan", "")
+    sid = sess.get("id", "")
+    if not user_key or plan not in PLANS:
+        return {"ok": True, "skipped": "missing_metadata"}
+
+    with _lock:
+        users = _load_users()
+        acc = users.get(user_key)
+        if not acc:
+            return {"ok": True, "skipped": "unknown_user"}
+
+        # Idempotência: o Stripe pode reenviar o mesmo evento — nunca ativa duas vezes.
+        for p in acc.get("purchases", []):
+            if p.get("session_id") == sid:
+                return {"ok": True, "skipped": "duplicate"}
+
+        now = time.time()
+        current_type, current_until = _active_pass(acc, now)
+        base = max(current_until, now)
+        new_type = plan if PASS_RANK[plan] >= PASS_RANK.get(current_type, 0) else current_type
+        acc["pass"] = {"type": new_type, "valid_until": base + PLANS[plan]["duration_s"]}
+        acc.setdefault("purchases", []).append({
+            "session_id": sid,
+            "plan": plan,
+            "amount_cents": sess.get("amount_total", PLANS[plan]["amount_cents"]),
+            "created": now,
+            "consent": True,
+        })
+        acc.pop("pending", None)
+        _save_users(users)
+
+    return {"ok": True, "activated": user_key, "plan": plan}
+
+
+@app.get("/api/plan")
+def plan_status(token: str = ""):
+    """Estado do passe e do uso da conta (para a barra de plano no front)."""
+    if not token:
+        raise HTTPException(400, "Falta o token.")
+    with _lock:
+        users = _load_users()
+        user_key, acc, _ = _find_by_token(users, token)
+        if not acc:
+            raise HTTPException(401, "Sessão inválida.")
         usage = _roll_usage(acc.get("usage") or _fresh_usage())
         acc["usage"] = usage
         _save_users(users)
+        pass_type, valid_until = _active_pass(acc, time.time())
+        purchases = sorted(acc.get("purchases", []), key=lambda p: p.get("created", 0), reverse=True)[:10]
 
+    caps = PLANS[pass_type]["cap"] if pass_type else (None, None)
     return {
-        "token": token,
-        "user": user,
-        "limite": LIMIT_PER_DAY,
-        "limite_semana": LIMIT_PER_WEEK,
-        "limite_mes": LIMIT_PER_MONTH,
-        "usos_hoje": usage["day_count"],
-        "usos_semana": usage["week_count"],
-        "usos_mes": usage["month_count"],
+        "active": bool(pass_type),
+        "pass_type": pass_type,
+        "plan_label": PLANS[pass_type]["label"] if pass_type else None,
+        "valid_until": _iso(valid_until) if pass_type else None,
+        "usage": {"hoje": usage["day_count"], "semana": usage["week_count"], "mes": usage["month_count"]},
+        "caps": {"dia": caps[1] if caps[0] == "day" else None, "semana": caps[1] if caps[0] == "week" else None},
+        "is_admin": user_key == ADMIN_USER,
+        "purchases": [{"plan": p["plan"], "amount_cents": p.get("amount_cents", 0), "created": _iso(p.get("created", 0))} for p in purchases],
     }
 
 
@@ -373,29 +622,27 @@ def generate(req: GenerateRequest, request: Request):
         }
 
     # ── Modo conta: token de sessão ──
-    token_hex = _token_hash(req.token)
     with _lock:
         users = _load_users()
-        acc = None
-        for a in users.values():
-            for s in a.get("sessions", []):
-                if s["token_hash"] == token_hex:
-                    acc = a
-                    break
-            if acc:
-                break
+        user_key, acc, sess = _find_by_token(users, req.token)
         if not acc:
             raise HTTPException(401, "Sessão expirada ou conta em uso noutro dispositivo. Inicia sessão novamente.")
-        s["last_seen"] = time.time()
+        sess["last_seen"] = time.time()
         usage = _roll_usage(acc.get("usage") or _fresh_usage())
         acc["usage"] = usage
 
-        if usage["day_count"] >= LIMIT_PER_DAY:
-            raise HTTPException(402, f"Limite diário atingido ({LIMIT_PER_DAY} descrições). Volta amanhã ou assina o plano ilimitado.")
-        if usage["week_count"] >= LIMIT_PER_WEEK:
-            raise HTTPException(402, f"Limite semanal atingido ({LIMIT_PER_WEEK} descrições). Volta na próxima semana ou assina o plano ilimitado.")
-        if usage["month_count"] >= LIMIT_PER_MONTH:
-            raise HTTPException(402, f"Limite mensal atingido ({LIMIT_PER_MONTH} descrições). Volta no próximo mês ou assina o plano ilimitado.")
+        now = time.time()
+        is_admin = user_key == ADMIN_USER
+        pass_type, valid_until = (None, 0) if is_admin else _active_pass(acc, now)
+
+        if not is_admin:
+            if not pass_type:
+                raise HTTPException(402, "Sem passe ativo. Compra 1 dia, 1 semana ou 1 mês para gerar descrições.")
+            per, cap = PLANS[pass_type]["cap"]
+            if per == "day" and usage["day_count"] >= cap:
+                raise HTTPException(402, f"Limite do passe diário atingido ({cap} descrições hoje). Compra outro passe para continuar.")
+            if per == "week" and usage["week_count"] >= cap:
+                raise HTTPException(402, f"Limite do passe semanal atingido ({cap} descrições esta semana). Compra outro passe para continuar.")
 
         raw = call_gemini(build_prompt(req.dados))
         result = parse_json(raw)
@@ -404,6 +651,13 @@ def generate(req: GenerateRequest, request: Request):
         usage["week_count"] += 1
         usage["month_count"] += 1
         _save_users(users)
+
+    if is_admin or pass_type == "month":
+        lim_d = lim_w = lim_m = None
+    elif pass_type == "day":
+        lim_d, lim_w, lim_m = PLANS["day"]["cap"][1], None, None
+    else:  # week
+        lim_d, lim_w, lim_m = None, PLANS["week"]["cap"][1], None
 
     return {
         "titulos_seo": result.get("titulos_seo", []),
@@ -415,12 +669,14 @@ def generate(req: GenerateRequest, request: Request):
         "descricao_en": result.get("descricao_en", ""),
         "perguntas_respostas": result.get("perguntas_respostas", []),
         "demo": False,
+        "pass_type": pass_type,
+        "valid_until": _iso(valid_until) if pass_type else None,
         "usos_hoje": usage["day_count"],
-        "limite": LIMIT_PER_DAY,
+        "limite": lim_d,
         "usos_semana": usage["week_count"],
-        "limite_semana": LIMIT_PER_WEEK,
+        "limite_semana": lim_w,
         "usos_mes": usage["month_count"],
-        "limite_mes": LIMIT_PER_MONTH,
+        "limite_mes": lim_m,
         "segundos": round(time.time() - t0, 1),
     }
 
@@ -435,3 +691,64 @@ def demo_status(device_id: str = ""):
     acc = users.get(key)
     usage = _roll_usage(acc["usage"]) if acc else _fresh_usage()
     return {"demo": True, "usos_hoje": usage["day_count"], "limite": DEMO_LIMIT_PER_DAY}
+
+
+# ── Back-office ──────────────────────────────────────────
+@app.post("/api/backoffice/login")
+def backoffice_login(req: BackofficeLogin):
+    if req.password != BACKOFFICE_PASSWORD:
+        raise HTTPException(401, "Password incorreta.")
+    tok = secrets.token_urlsafe(24)
+    _bo_tokens[tok] = time.time() + 12 * 3600
+    return {"token": tok}
+
+
+@app.get("/api/backoffice/data")
+def backoffice_data(x_token: str = Header(default="")):
+    if _bo_tokens.get(x_token, 0) < time.time():
+        raise HTTPException(401, "Não autorizado.")
+    users = _load_users()
+    rows, purchases = [], []
+    revenue_cents = 0
+    active_passes = 0
+    demo_users = 0
+    now = time.time()
+    for k, a in users.items():
+        if k.startswith("demo:"):
+            demo_users += 1
+            continue
+        pass_type, valid_until = _active_pass(a, now)
+        if pass_type:
+            active_passes += 1
+        rows.append({
+            "user": k,
+            "created": _iso(a.get("created", 0)),
+            "pass_type": pass_type,
+            "valid_until": _iso(valid_until) if pass_type else None,
+            "usos_hoje": (a.get("usage") or {}).get("day_count", 0),
+        })
+        for p in a.get("purchases", []):
+            revenue_cents += p.get("amount_cents", 0)
+            purchases.append({
+                "user": k,
+                "plan": p.get("plan", ""),
+                "amount_cents": p.get("amount_cents", 0),
+                "created": _iso(p.get("created", 0)),
+                "session": p.get("session_id", ""),
+            })
+    purchases.sort(key=lambda x: x["created"] or "", reverse=True)
+    return {
+        "totals": {
+            "receita_cents": revenue_cents,
+            "passes_ativos": active_passes,
+            "contas": len(rows),
+            "demo_dispositivos": demo_users,
+        },
+        "users": sorted(rows, key=lambda r: r["user"]),
+        "purchases": purchases[:200],
+    }
+
+
+@app.get("/backoffice")
+def backoffice_page():
+    return FileResponse(os.path.join(BASE_DIR, "backoffice.html"))

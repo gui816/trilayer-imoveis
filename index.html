@@ -29,7 +29,10 @@ a{color:#125548}
 #gate{position:fixed;inset:0;background:var(--bg);display:flex;align-items:center;justify-content:center;z-index:200}
 .gate-card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:2.5rem;width:min(400px,90vw);text-align:center}
 .gate-logo{font-family:'DM Serif Display',serif;font-size:1.6rem;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:.4rem}
-.gate-sub{color:var(--sub);font-size:.85rem;margin-bottom:1.6rem}
+.gate-sub{color:var(--sub);font-size:.85rem;margin-bottom:1.4rem}
+.gate-tabs{display:flex;background:var(--bg3);border-radius:9px;padding:.25rem;margin-bottom:1.2rem}
+.gate-tab{flex:1;border:none;background:transparent;padding:.55rem;border-radius:7px;font-size:.85rem;font-weight:600;color:var(--sub);cursor:pointer}
+.gate-tab.active{background:#fff;color:var(--v);box-shadow:0 1px 4px rgba(42,37,32,.12)}
 .gate-input{width:100%;background:var(--bg3);border:1px solid var(--border);border-radius:9px;padding:.85rem 1rem;color:var(--text);font-size:.95rem;outline:none;margin-bottom:.9rem}
 .gate-input:focus{border-color:var(--v)}
 .gate-err{color:#f87171;font-size:.8rem;min-height:1.2em;margin-bottom:.4rem}
@@ -38,10 +41,12 @@ a{color:#125548}
 .btn-ghost:hover{background:rgba(23,107,87,.06);border-color:rgba(23,107,87,.4)}
 .btn{background:var(--v);color:#fff;border:none;border-radius:9px;padding:.85rem 1.4rem;font-weight:600;font-size:.9rem;cursor:pointer;width:100%;transition:all .2s}
 .btn:hover{background:var(--v2)}
+.gate-demo{margin-top:1.2rem;font-size:.8rem;color:var(--sub)}
+.gate-demo button{background:none;border:none;color:var(--v);font-weight:700;cursor:pointer;font-size:.8rem;text-decoration:underline}
 
 /* ── MAIN ── */
 #app{display:none;max-width:1080px;margin:0 auto;padding:2.5rem 1.5rem 4rem}
-nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:2.5rem}
+nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:1.6rem}
 .logo{font-family:'DM Serif Display',serif;font-size:1.4rem;background:var(--grad);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
 .note{color:var(--sub);font-size:.8rem}
 .hero-h{font-family:'DM Serif Display',serif;font-size:clamp(2rem,4vw,3rem);line-height:1.1;margin-bottom:.6rem}
@@ -63,6 +68,14 @@ nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:
 #status.err{color:var(--red)}
 #status.ok{color:#16794a}
 
+/* ── PLAN BAR / BANNERS ── */
+.plan-bar{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:linear-gradient(180deg,rgba(201,151,63,.10),#fff);border:1px solid rgba(185,138,47,.5);border-radius:12px;padding:.8rem 1.1rem;margin-bottom:1.2rem;font-size:.85rem}
+.plan-bar.active{border-color:rgba(23,107,87,.4);background:linear-gradient(180deg,rgba(23,107,87,.08),#fff)}
+.plan-bar .btn-sm{white-space:nowrap}
+.offline-banner{background:rgba(185,138,47,.14);border:1px solid rgba(185,138,47,.45);color:#8a6a24;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
+.demo-banner{background:rgba(201,151,63,.12);border:1px solid rgba(185,138,47,.4);color:#8a6a24;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
+.ok-banner{background:rgba(30,142,90,.1);border:1px solid rgba(30,142,90,.4);color:#16794a;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
+
 /* ── RESULTS ── */
 #results{display:none}
 .r-block{background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:1.2rem;margin-bottom:1rem;position:relative}
@@ -79,25 +92,34 @@ nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:
 .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-top:1.2rem}
 @media(max-width:900px){.plans{grid-template-columns:1fr 1fr}}
 @media(max-width:700px){.plans{grid-template-columns:1fr}}
-.plan{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.6rem;position:relative}
+.plan{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.6rem;position:relative;display:flex;flex-direction:column}
 .plan.featured{border-color:rgba(185,138,47,.6);background:linear-gradient(180deg,rgba(201,151,63,.10),#fff)}
 .plan-badge{position:absolute;top:-10px;right:16px;background:var(--gold);color:#fff;font-size:.65rem;font-weight:700;padding:.25rem .6rem;border-radius:99px;letter-spacing:.05em;text-transform:uppercase}
 .plan h3{font-size:.95rem;font-weight:700;margin-bottom:.3rem}
 .plan-price{font-family:'DM Serif Display',serif;font-size:1.7rem;margin-bottom:.6rem}
 .plan-price small{font-family:'Inter',sans-serif;font-size:.8rem;color:var(--sub);font-weight:400}
-.plan ul{list-style:none;margin-bottom:1.1rem}
+.plan ul{list-style:none;margin-bottom:1.1rem;flex:1}
 .plan li{font-size:.84rem;color:var(--sub);padding:.3rem 0;padding-left:1.4rem;position:relative}
 .plan li::before{content:"✓";position:absolute;left:0;color:var(--g);font-weight:700}
-.plan .btn{pointer-events:none;opacity:.7}
+.plan .btn{margin-top:auto}
 .plan-note{font-size:.72rem;color:var(--sub);text-align:center;margin-top:1rem}
 .modes{display:grid;grid-template-columns:1fr;gap:1rem;margin-bottom:1.2rem;max-width:640px}
 @media(max-width:700px){.modes{grid-template-columns:1fr}}
 .mode{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.6rem}
 .mode h3{font-size:.95rem;font-weight:700;margin-bottom:.5rem}
 .mode p{font-size:.86rem;color:var(--sub)}
-.soon{display:inline-block;background:rgba(185,138,47,.15);color:#a87b2e;font-size:.62rem;font-weight:700;padding:.2rem .5rem;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;vertical-align:middle;margin-left:.35rem}
 footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px;margin-right:.5rem}
+
+/* ── BUY MODAL ── */
+.modal{position:fixed;inset:0;background:rgba(42,37,32,.5);display:flex;align-items:center;justify-content:center;z-index:300;padding:1rem}
+.modal-card{background:var(--bg2);border-radius:16px;padding:2rem;width:min(440px,92vw);text-align:left}
+.modal-card h3{font-size:1.1rem;margin-bottom:.4rem}
+.modal-card .bm-desc{color:var(--sub);font-size:.88rem;margin-bottom:1.3rem}
+.consent{display:flex;gap:.6rem;align-items:flex-start;background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.85rem 1rem;font-size:.8rem;color:var(--sub);margin-bottom:1.2rem;cursor:pointer}
+.consent input{margin-top:.2rem;accent-color:var(--v)}
+.modal-card .row-actions{justify-content:flex-end}
+.modal-card .bm-secure{font-size:.72rem;color:var(--sub);margin-top:.8rem;text-align:center}
 
 /* ── HERO ── */
 .hero-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:2.5rem;align-items:center;margin-bottom:.6rem}
@@ -106,8 +128,6 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 .hero-media .tag{position:absolute;left:12px;bottom:12px;background:rgba(255,255,255,.93);color:#2a2520;font-size:.72rem;font-weight:700;padding:.4rem .8rem;border-radius:99px;letter-spacing:.02em;box-shadow:0 4px 12px rgba(42,37,32,.14)}
 .cta-row{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-top:1.3rem}
 .cta-note{font-size:.8rem;color:var(--sub)}
-.offline-banner{background:rgba(185,138,47,.14);border:1px solid rgba(185,138,47,.45);color:#8a6a24;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
-.demo-banner{background:rgba(201,151,63,.12);border:1px solid rgba(185,138,47,.4);color:#8a6a24;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
 @media(max-width:860px){.hero-grid{grid-template-columns:1fr}.hero-media{order:-1}}
 
 /* ── PORTALS STRIP ── */
@@ -138,15 +158,20 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 </head>
 <body>
 
-<!-- PASSWORD GATE -->
+<!-- GATE -->
 <div id="gate">
   <div class="gate-card">
     <div class="gate-logo">Casa que Vende</div>
-    <div class="gate-sub">Transforma anúncios em visitas — acesso de teste</div>
+    <div class="gate-sub">Transforma anúncios em visitas — cria conta ou entra para gerar</div>
+    <div class="gate-tabs">
+      <button class="gate-tab active" id="tabLogin" onclick="gateMode('login')">Entrar</button>
+      <button class="gate-tab" id="tabRegister" onclick="gateMode('register')">Criar conta</button>
+    </div>
     <input id="lu" type="text" class="gate-input" placeholder="Utilizador" autocomplete="username"/>
-    <input id="pw" type="password" class="gate-input" placeholder="Password" autocomplete="current-password"/>
+    <input id="pw" type="password" class="gate-input" placeholder="Password (mín. 8 caracteres)" autocomplete="current-password"/>
     <div class="gate-err" id="pwErr"></div>
-    <button class="btn" onclick="login()">Entrar</button>
+    <button class="btn" id="gateBtn" onclick="login()">Entrar</button>
+    <div class="gate-demo">Ou <button onclick="ctaDemo()">experimentar a demo grátis</button> (2 descrições por dia)</div>
   </div>
 </div>
 
@@ -161,6 +186,13 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
   </nav>
 
   <div id="offlineBanner" class="offline-banner" style="display:none">⚠️ Modo pré-visualização — a API ainda não está ligada. O login de teste funciona localmente; os resultados são exemplos.</div>
+  <div id="demoBanner" class="demo-banner" style="display:none">⚡ Modo demo — <span id="demoCount">2 descrições grátis por dia</span>. <button class="btn-sm" onclick="openGate('register')">Criar conta</button> para comprar um passe.</div>
+  <div id="okBanner" class="ok-banner" style="display:none">✅ Pagamento confirmado — o teu passe está ativo. Boas vendas!</div>
+
+  <div id="planBar" class="plan-bar" style="display:none">
+    <span id="planInfo"></span>
+    <button class="btn-sm" onclick="scrollToPlans()">Comprar passe</button>
+  </div>
 
   <div class="hero-grid">
     <div>
@@ -168,7 +200,7 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
       <p class="hero-p">Dá-nos os dados do imóvel e recebe um anúncio completo em português de Portugal: título com SEO, descrição curta e longa, versão em inglês para compradores estrangeiros e respostas às perguntas mais frequentes. Sem pt-BR, sem enchimento — pronto a publicar no Idealista, OLX, CASAFARI ou no teu site.</p>
       <div class="cta-row">
         <button class="btn" style="width:auto" onclick="ctaDemo()">⚡ Experimentar agora</button>
-        <span class="cta-note">Grátis durante o teste · sem cartão de crédito</span>
+        <span class="cta-note">Demo grátis por dia · passa de €1 · sem mensalidades</span>
       </div>
     </div>
     <div class="hero-media">
@@ -229,44 +261,59 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 
   <div class="card">
     <h3>Planos</h3>
-    <p class="hero-p" style="margin-bottom:0">Sem mensalidades escondidas — pagas pelo que usas. Pagamentos online em breve; durante o teste o acesso é por password.</p>
+    <p class="hero-p" style="margin-bottom:0">Pagas pelo que usas, sem mensalidades escondidas. O acesso é ativado no momento do pagamento.</p>
     <div class="plans">
       <div class="plan">
         <h3>Diário</h3>
         <div class="plan-price">€1 <small>/dia</small></div>
         <ul>
+          <li>Válido 24 horas</li>
           <li>Até 20 descrições por dia</li>
-          <li>Sem fidelização</li>
           <li>Ideal para testar ou uso pontual</li>
         </ul>
-        <button class="btn" disabled>Em breve</button>
+        <button class="btn" onclick="openBuy('day')">Comprar</button>
       </div>
       <div class="plan">
         <h3>Semanal</h3>
-        <div class="plan-price">€5 <small>/semana</small></div>
+        <div class="plan-price">€4,99 <small>/semana</small></div>
         <ul>
-          <li>Até 50 descrições por semana</li>
-          <li>Para testar 7 dias a sério</li>
-          <li>Ou para uma semana de anúncios</li>
+          <li>Válido 7 dias</li>
+          <li>Até 100 descrições por semana</li>
+          <li>Para uma semana de anúncios a sério</li>
         </ul>
-        <button class="btn" disabled>Em breve</button>
+        <button class="btn" onclick="openBuy('week')">Comprar</button>
       </div>
       <div class="plan featured">
         <div class="plan-badge">Melhor valor</div>
         <h3>Mensal</h3>
         <div class="plan-price">€9,99 <small>/mês</small></div>
         <ul>
-          <li>Descrições ilimitadas (uso razoável)</li>
-          <li>Todas as plataformas (Idealista, OLX, CASAFARI…)</li>
-          <li>Versão EN incluída para compradores estrangeiros</li>
+          <li>Válido 30 dias</li>
+          <li>Descrições ilimitadas</li>
+          <li>Todas as plataformas + versão EN incluída</li>
         </ul>
-        <button class="btn" disabled>Em breve</button>
+        <button class="btn" onclick="openBuy('month')">Comprar</button>
       </div>
     </div>
-    <p class="plan-note">Preços sem IVA. Cancelas quando quiseres.</p>
+    <p class="plan-note">Preços com IVA incluído (23%) · pagamento seguro via Stripe · sem reembolsos — o acesso é ativado de imediato.</p>
   </div>
 
-  <footer>Casa que Vende · by TriLayer Engineering · MVP em teste · <a href="https://trilayer.dev" target="_blank" rel="noopener">trilayer.dev</a></footer>
+  <footer>Casa que Vende · by TriLayer Engineering · MVP · <a href="https://trilayer.dev" target="_blank" rel="noopener">trilayer.dev</a></footer>
+</div>
+
+<!-- BUY MODAL -->
+<div id="buyModal" class="modal" style="display:none">
+  <div class="modal-card">
+    <h3 id="bmTitle">Passe Diário</h3>
+    <p class="bm-desc" id="bmDesc"></p>
+    <label class="consent"><input type="checkbox" id="bmConsent"/> Entendo que o acesso é ativado de imediato e que <strong>não há reembolsos</strong>.</label>
+    <div class="row-actions">
+      <button class="btn" style="width:auto" onclick="confirmBuy()">🔒 Continuar para pagamento</button>
+      <button class="btn-sm" onclick="closeBuy()">Cancelar</button>
+    </div>
+    <div class="gate-err" id="bmErr"></div>
+    <p class="bm-secure">Pagamento processado pelo Stripe — cartão de crédito ou débito. Não guardamos dados de pagamento.</p>
+  </div>
 </div>
 
 <script>
@@ -283,12 +330,19 @@ const $ = id => document.getElementById(id);
 const LOCAL_USER = "gui";
 const LOCAL_PASS_HASH = "a6f344dcd92e3ac9e0984441db433e71d969bc1b33419afd93d39e1d0f752840";
 
+const PLANS_INFO = {
+  day:   { title: "Passe Diário — €1",      desc: "Válido 24 horas · até 20 descrições por dia." },
+  week:  { title: "Passe Semanal — €4,99",  desc: "Válido 7 dias · até 100 descrições por semana." },
+  month: { title: "Passe Mensal — €9,99",   desc: "Válido 30 dias · descrições ilimitadas." }
+};
+
 async function sha256hex(str){
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
 function isLocalSession(){ const s = getSession(); return !!(s && s.local); }
+function isDemoSession(){ const s = getSession(); return !!(s && s.demo); }
 function showOffline(){ $("offlineBanner").style.display = "block"; }
 function hideOffline(){ $("offlineBanner").style.display = "none"; }
 
@@ -304,6 +358,17 @@ function deviceId(){
 function getSession(){ try { return JSON.parse(localStorage.getItem(SESSION_KEY)) || null; } catch(e){ return null; } }
 function setSession(user, token){ localStorage.setItem(SESSION_KEY, JSON.stringify({user, token})); }
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
+
+let gateModeNow = "login";
+function gateMode(m){
+  gateModeNow = m;
+  $("tabLogin").className = "gate-tab" + (m === "login" ? " active" : "");
+  $("tabRegister").className = "gate-tab" + (m === "register" ? " active" : "");
+  $("gateBtn").textContent = m === "login" ? "Entrar" : "Criar conta e entrar";
+  $("pw").placeholder = m === "login" ? "Password" : "Password (mín. 8 caracteres)";
+  $("pwErr").textContent = "";
+}
+function openGate(m){ $("gate").style.display = "flex"; $("app").style.display = "none"; gateMode(m || "login"); $("lu").focus(); }
 
 async function login(){
   const user = $("lu").value.trim();
@@ -334,6 +399,28 @@ async function login(){
   }
 }
 
+async function register(){
+  const user = $("lu").value.trim();
+  const pw = $("pw").value.trim();
+  if(!user || user.length < 3){ $("pwErr").textContent = "Utilizador: pelo menos 3 caracteres."; return; }
+  if(pw.length < 8){ $("pwErr").textContent = "Password: pelo menos 8 caracteres."; return; }
+  $("pwErr").textContent = "";
+  try{
+    const r = await fetch(API_URL + "/api/register", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ user, password: pw, device_id: deviceId() })
+    });
+    const j = await r.json();
+    if(!r.ok){ $("pwErr").textContent = j.detail || "Erro ao criar conta."; return; }
+    setSession(j.user, j.token);
+    hideOffline();
+    showApp();
+  }catch(e){
+    $("pwErr").textContent = "Erro de rede. A API ainda não está ligada?";
+  }
+}
+
 function logout(){
   clearSession();
   $("gate").style.display = "flex";
@@ -346,14 +433,92 @@ function showApp(){
   $("app").style.display = "block";
   const s = getSession();
   $("navUser").textContent = (s && s.user) ? s.user : "—";
+  if(isDemoSession()){ $("demoBanner").style.display = "block"; refreshDemoBanner(); }
+  else { $("demoBanner").style.display = "none"; }
+  refreshPlan();
 }
+
 function ctaDemo(){
   const s = getSession();
-  if(!s || !s.token){ $("gate").style.display = "flex"; $("app").style.display = "none"; $("lu").focus(); return; }
+  if(s && (s.token || s.local)){ document.getElementById("form-card").scrollIntoView({behavior:"smooth"}); return; }
+  // Demo anónima: funciona sem conta (a API aceita device_id sem token)
+  localStorage.setItem(SESSION_KEY, JSON.stringify({ user: "demo", token: "", demo: true }));
+  showApp();
   document.getElementById("form-card").scrollIntoView({behavior:"smooth"});
 }
 
-async function refreshDemoBanner(){}
+async function refreshDemoBanner(){
+  try{
+    const r = await fetch(API_URL + "/api/demo?device_id=" + encodeURIComponent(deviceId()));
+    const j = await r.json();
+    const rest = Math.max(0, j.limite - j.usos_hoje);
+    $("demoCount").textContent = "Demo grátis: " + rest + " de " + j.limite + " descrições hoje.";
+  }catch(e){}
+}
+
+async function refreshPlan(){
+  const s = getSession();
+  if(!s || !s.token || s.local || s.demo){ $("planBar").style.display = "none"; return; }
+  try{
+    const r = await fetch(API_URL + "/api/plan?token=" + encodeURIComponent(s.token));
+    const j = await r.json();
+    if(!r.ok){ $("planBar").style.display = "none"; return; }
+    renderPlanBar(j);
+  }catch(e){}
+}
+
+function renderPlanBar(j){
+  const bar = $("planBar");
+  if(j.active){
+    bar.className = "plan-bar active";
+    bar.style.display = "flex";
+    let caps = "";
+    if(j.caps.dia) caps = " · máx. " + j.caps.dia + "/dia";
+    if(j.caps.semana) caps = " · máx. " + j.caps.semana + "/semana";
+    $("planInfo").innerHTML = "<span class='usage'>✓ Passe " + (j.plan_label || "").toLowerCase() + " ativo até " + j.valid_until + caps + "</span> <span style='color:var(--sub);font-size:.78rem'>hoje: " + j.usage.hoje + " · semana: " + j.usage.semana + "</span>";
+  } else {
+    bar.className = "plan-bar";
+    bar.style.display = "flex";
+    $("planInfo").textContent = "Sem passe ativo — compra 1 dia, 1 semana ou 1 mês para gerar descrições.";
+  }
+}
+
+function scrollToPlans(){ document.querySelector(".plans").scrollIntoView({behavior:"smooth"}); }
+
+// ── BUY FLOW ──
+let currentPlan = null;
+function openBuy(plan){
+  currentPlan = plan;
+  $("bmTitle").textContent = PLANS_INFO[plan].title;
+  $("bmDesc").textContent = PLANS_INFO[plan].desc;
+  $("bmConsent").checked = false;
+  $("bmErr").textContent = "";
+  $("buyModal").style.display = "flex";
+}
+function closeBuy(){ $("buyModal").style.display = "none"; }
+
+async function confirmBuy(){
+  const s = getSession();
+  if(!s || !s.token){
+    closeBuy();
+    openGate(s && s.local ? "login" : "register");
+    return;
+  }
+  if(!$("bmConsent").checked){ $("bmErr").textContent = "Tens de aceitar a política de sem reembolsos."; return; }
+  $("bmErr").textContent = "";
+  try{
+    const r = await fetch(API_URL + "/api/checkout", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ token: s.token, plan: currentPlan, consent: true })
+    });
+    const j = await r.json();
+    if(!r.ok){ $("bmErr").textContent = j.detail || "Erro ao iniciar o pagamento."; return; }
+    window.location.href = j.url;  // Stripe Checkout (hosted)
+  }catch(e){
+    $("bmErr").textContent = "Erro de rede. Tenta novamente.";
+  }
+}
 
 function setStatus(msg, cls){ const s = $("status"); s.textContent = msg; s.className = cls || ""; }
 
@@ -386,7 +551,10 @@ async function generate(){
     });
     const j = await r.json();
     if(!r.ok){
-      if(r.status === 402){ setStatus(j.detail || "Limite atingido.", "err"); }
+      if(r.status === 402){
+        setStatus(j.detail || "Limite atingido.", "err");
+        if(!isDemo) openBuy("day");   // sem passe → sugere compra
+      }
       else if(r.status === 429){ setStatus(j.detail || "Limite de demo por rede atingido. Cria uma conta para continuar.", "err"); }
       else if(r.status === 401){ clearSession(); logout(); $("pwErr").textContent = "Sessão expirada ou conta em uso noutro dispositivo."; }
       else { setStatus(j.detail || "Erro ao gerar. Tenta novamente.", "err"); }
@@ -394,6 +562,7 @@ async function generate(){
     }
     render(j);
     setStatus("✓ Pronto em " + (j.segundos || "?") + "s", "ok");
+    refreshPlan();
   }catch(e){
     setStatus("Erro de rede. Verifica se a API está online.", "err");
   }
@@ -403,7 +572,7 @@ function render(j){
   $("results").style.display = "block";
   $("usage").textContent = j.demo
     ? "Demo hoje: " + j.usos_hoje + "/" + j.limite
-    : "Hoje " + j.usos_hoje + "/" + j.limite + " · Semana " + j.usos_semana + "/" + j.limite_semana + " · Mês " + j.usos_mes + "/" + j.limite_mes;
+    : "Hoje " + j.usos_hoje + "/" + fmtLim(j.limite) + " · Semana " + j.usos_semana + "/" + fmtLim(j.limite_semana) + " · Mês " + j.usos_mes + "/" + fmtLim(j.limite_mes);
   const titulos = (j.titulos_seo || []).map((t, i) => block2("Título " + (i + 1) + " (SEO)", t, (j.titulos_en || [])[i] || "")).join("");
   $("r_title").innerHTML = '<div class="r-label">Escolhe um dos 3 títulos (PT-PT e EN)</div>' + titulos;
   const ganchos = (j.ganchos || []).map((g, i) => block2("Abertura " + (i + 1), g, (j.ganchos_en || [])[i] || "")).join("");
@@ -418,6 +587,8 @@ function render(j){
   $("r_faq").innerHTML = faq;
   $("results").scrollIntoView({behavior:"smooth"});
 }
+
+function fmtLim(v){ return (v === null || v === undefined) ? "∞" : v; }
 
 function block(label, text){
   return `<div class="r-block"><div class="r-label">${label} <button onclick="copy(this,'${escAttr(text)}')">Copiar</button></div><div class="r-text">${esc(text)}</div></div>`;
@@ -478,7 +649,7 @@ function renderPreview(){
       {pergunta: "Quais são as despesas de condomínio?", resposta: "As despesas de condomínio rondam os 45 €/mês (valor a confirmar na escritura)."},
       {pergunta: "Quando é possível visitar?", resposta: "As visitas podem ser agendadas de segunda a sábado. Contacte-nos para marcar a sua."}
     ],
-    demo: false, usos_hoje: 0, limite: 20, usos_semana: 0, limite_semana: 50, usos_mes: 0, limite_mes: 200
+    demo: false, usos_hoje: 0, limite: 20, usos_semana: 0, limite_semana: 100, usos_mes: 0, limite_mes: null
   });
 }
 
@@ -488,10 +659,17 @@ function clearAll(){
   setStatus("");
 }
 
-// Auto-login se houver sessão guardada (token da API ou login local); caso contrário mostra a gate.
+// Pagamento confirmado (volta do Stripe com #comprado)
+if(location.hash === "#comprado"){
+  const okB = $("okBanner");
+  okB.style.display = "block";
+  setTimeout(() => { okB.style.display = "none"; }, 8000);
+}
+
+// Auto-login se houver sessão guardada (token da API, login local ou demo); senão mostra a gate.
 const s0 = getSession();
-if(s0 && (s0.token || s0.local)){ showApp(); if(s0.local) showOffline(); } else { $("gate").style.display = "flex"; $("app").style.display = "none"; }
-$("pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
+if(s0 && (s0.token || s0.local || s0.demo)){ showApp(); if(s0.local) showOffline(); } else { $("gate").style.display = "flex"; $("app").style.display = "none"; }
+$("pw").addEventListener("keydown", e => { if(e.key === "Enter") { gateModeNow === "login" ? login() : register(); } });
 $("lu").addEventListener("keydown", e => { if(e.key === "Enter") $("pw").focus(); });
 </script>
 </body>

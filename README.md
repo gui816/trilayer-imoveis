@@ -6,20 +6,35 @@ Produto de teste da **TriLayer Engineering** (trilayer.dev).
 ## Arquitetura
 
 - **Front-end:** `index.html` estático → GitHub Pages (grátis)
-- **API:** `api/main.py` (FastAPI) → Render free tier (onde já tens o CobraAi/meal-scanner)
+- **API:** `api/main.py` (FastAPI) → Render free tier
 - **LLM:** Gemini Flash (`gemini-2.5-flash`) via API key
+- **Pagamentos:** Stripe Checkout (pagamentos únicos, sem subscrições)
+
+## Modelo de negócio — passes com validade
+
+Compra um passe de acesso por um período; o acesso é ativado de imediato e **não há reembolsos**
+(consentimento explícito no checkout, como exige a lei da UE para serviços digitais).
+
+| Passe | Preço (IVA incl.) | Validade | Limite |
+|---|---|---|---|
+| day | €1,00 | 24 h | 20 descrições/dia |
+| week | €4,99 | 7 dias | 100 descrições/semana |
+| month | €9,99 | 30 dias | ilimitado |
+
+- Compra em cima de compra **acumula** (`valid_until = max(valid_until, agora) + duração`)
+- O tipo de passe sobe sempre para o mais forte ativo (dia → semana → mês)
+- Conta `ADMIN_USER` tem bypass (não precisa de passe — é do dono)
+- Demo anónima: 2 descrições/dia por dispositivo (+ teto por IP)
 
 ## Deploy
 
 ### 1. GitHub Pages
 ```bash
 cd ~/projects/trilayer-imoveis
-git init && git add -A && git commit -m "feat: trilayer imoveis MVP"
-# criar repo no GitHub (ex: trilayer-imoveis) e:
-git remote add origin git@github.com:gui816/trilayer-imoveis.git
-git push -u origin main
+git add -A && git commit -m "feat: ..."
+git push origin main
 ```
-GitHub → repo → Settings → Pages → Source: `main` / root → online em
+GitHub → repo → Settings → Pages → Source: `main` / root →
 `https://gui816.github.io/trilayer-imoveis/`
 
 ### 2. Render (API)
@@ -27,31 +42,47 @@ GitHub → repo → Settings → Pages → Source: `main` / root → online em
 - Root directory: `api`
 - Build: `pip install -r requirements.txt`
 - Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-- Env vars:
-  - `GEMINI_API_KEY` (tens no `.env.local` do cobraai)
-  - `API_PASSWORD` = a password de teste (ex: algo forte)
-  - `LIMIT_PER_DAY` = `20`
-- Depois, no `index.html`: `const API_URL = "https://<teu-serviço>.onrender.com"` e volta a fazer push.
+- Env vars (ver `api/render.yaml`):
+  - `GEMINI_API_KEY` — obrigatória
+  - `ADMIN_USER` / `ADMIN_PASSWORD` — conta inicial (do dono, com bypass)
+  - `STRIPE_SECRET_KEY` — `sk_test_...` (teste) ou `sk_live_...`
+  - `STRIPE_WEBHOOK_SECRET` — `whsec_...` do webhook (ver passo 3)
+  - `SITE_URL` — URL do GitHub Pages (para o Stripe voltar após pagamento)
+  - `BACKOFFICE_PASSWORD` — acesso ao back-office (`https://<api>/backoffice`)
+  - `DEMO_LIMIT_PER_DAY` (2), `DEMO_IP_LIMIT_PER_DAY` (10), `MAX_ACTIVE_SESSIONS` (1), `TZ` (Europe/Lisbon)
+- Depois, no `index.html`: `const API_URL = "https://<teu-serviço>.onrender.com"` e faz push.
 
-### 3. Testar
-1. Abre o GitHub Pages → password → formulário
-2. Clica "Preencher exemplo" → "Gerar descrições"
-3. Verifica se a descrição é PT-PT (não pt-BR) — esse é o diferencial
+### 3. Stripe
+1. Conta em stripe.com/pt (ativar em modo teste)
+2. Dashboard → Developers → API keys → copiar `sk_test_...`
+3. Dashboard → Developers → Webhooks → **Add endpoint**:
+   - URL: `https://<teu-serviço>.onrender.com/webhook/stripe`
+   - Eventos: `checkout.session.completed`
+   - Copiar o **Signing secret** (`whsec_...`) → `STRIPE_WEBHOOK_SECRET`
+4. Testar: comprar um passe no site com o cartão de teste `4242 4242 4242 4242`
+5. Para produção: ativar a conta Stripe, trocar para `sk_live_...` + webhook live
 
-## Monetização (planeada, não implementada no MVP)
+> Nota dev: em local sem webhook público, podes testar com
+> `ALLOW_UNSIGNED_WEBHOOK=1` (aceita eventos sem assinatura — nunca em produção).
 
-- **€1 / dia** → máximo 20 descrições (já está o limite no código — devolve 402)
-- **€9,99 / mês** → ilimitado (falta: pagamentos Stripe + flag de subscrito)
-- O contador de usos está em `api/usage.json` (reset diário automático)
+### 4. Back-office
+`https://<api>.onrender.com/backoffice` → password = `BACKOFFICE_PASSWORD`.
+Mostra receita, contas, passes ativos e compras.
 
-## Custos (por que €1/dia cobre tudo)
+## Testes
+```bash
+cd api && ../.venv/bin/python -m uvicorn main:app --reload
+# testes de fluxo: ver histórico do projeto (TestClient com webhook unsigned)
+```
+
+## Custos
 
 | Item | Custo |
 |---|---|
 | Gemini Flash por descrição (~1.5k in + 1.2k out) | ~€0,0006 |
 | 20 descrições/dia | ~€0,01-0,02/dia |
-| GitHub Pages + Render free | €0 |
-| **Total mensal (600 descrições)** | **~€0,40-0,60** |
+| GitHub Pages + Render free + Stripe (sem tarifa fixa) | €0 |
+| Stripe por transação | 1,4% + €0,25 |
 
-→ €1/dia (≈€30/mês) cobre os custos **~50-100x**. Mesmo com retries/erros a dobrarem,
+→ €1/dia (≈€30/mês) cobre os custos ~50-100x. Mesmo com retries/erros a dobrarem,
 a margem é enorme. O €9,99/mês ilimitado também é lucro desde o 1.º cliente.

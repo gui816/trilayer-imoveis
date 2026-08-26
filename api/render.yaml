@@ -13,15 +13,19 @@ services:
         value: gui
       - key: ADMIN_PASSWORD
         sync: false
-      - key: LIMIT_PER_DAY
-        value: "20"
-      - key: LIMIT_PER_WEEK
-        value: "50"
-      - key: LIMIT_PER_MONTH
-        value: "200"
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: SITE_URL
+        value: https://gui816.github.io/trilayer-imoveis/
+      - key: BACKOFFICE_PASSWORD
+        sync: false
       - key: MAX_ACTIVE_SESSIONS
         value: "1"
       - key: DEMO_LIMIT_PER_DAY
-        value: "1"
-      - key: DEMO_IP_LIMIT_PER_DAY
         value: "2"
+      - key: DEMO_IP_LIMIT_PER_DAY
+        value: "10"
+      - key: TZ
+        value: Europe/Lisbon
