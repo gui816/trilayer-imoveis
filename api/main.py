@@ -38,14 +38,21 @@ import hashlib
 import secrets
 import threading
 from datetime import datetime
+from io import BytesIO
 from zoneinfo import ZoneInfo
 
 import requests
 import stripe
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_RIGHT
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 app = FastAPI(title="TriLayer Imóveis API")
 
@@ -70,6 +77,19 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 SITE_URL = os.environ.get("SITE_URL", "https://gui816.github.io/trilayer-imoveis/")
 ALLOW_UNSIGNED_WEBHOOK = os.environ.get("ALLOW_UNSIGNED_WEBHOOK", "0") == "1"
 LOCAL_TZ = ZoneInfo(os.environ.get("TZ", "Europe/Lisbon"))
+
+# ── Faturação (fatura-recibo, ENI) ──────────────────────
+# Preenche FATURA_NIF para ativar; FATURA_ISENTO=1 (default) → art. 53.º CIVA (sem IVA).
+FATURA_NOME = os.environ.get("FATURA_NOME", "TriLayer Engineering")
+FATURA_NIF = os.environ.get("FATURA_NIF", "")
+FATURA_MORADA = os.environ.get("FATURA_MORADA", "")
+FATURA_CAE = os.environ.get("FATURA_CAE", "62090")
+FATURA_ISENTO = os.environ.get("FATURA_ISENTO", "1") == "1"
+PLAN_ITEMS = {
+    "day": "Passe diário — descrições de imóveis com IA (24 horas)",
+    "week": "Passe semanal — descrições de imóveis com IA (7 dias)",
+    "month": "Passe mensal — descrições de imóveis com IA (30 dias)",
+}
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 USERS_FILE = os.path.join(BASE_DIR, "users.json")
@@ -754,3 +774,118 @@ def backoffice_data(x_token: str = Header(default="")):
 @app.get("/backoffice")
 def backoffice_page():
     return FileResponse(os.path.join(BASE_DIR, "backoffice.html"))
+
+
+# ── Faturação (PDF) ─────────────────────────────────────
+def _fmt_eur(cents: int) -> str:
+    return f"{cents / 100:.2f}".replace(".", ",") + " €"
+
+
+def _assign_invoice_number(users: dict, purchase: dict, year: int) -> str:
+    """Numeração sequencial estável por ano: FT 2026/0001, 0002..."""
+    if purchase.get("num"):
+        return purchase["num"]
+    used = set()
+    for a in users.values():
+        for p in a.get("purchases", []):
+            if p.get("num"):
+                used.add(p["num"])
+    i = 1
+    while f"FT {year}/{i:04d}" in used:
+        i += 1
+    num = f"FT {year}/{i:04d}"
+    purchase["num"] = num
+    return num
+
+
+def _invoice_pdf(purchase: dict, email: str) -> bytes:
+    """Gera o PDF da fatura-recibo. Preços com IVA incluído; se FATURA_ISENTO,
+    sem destaque de IVA (isenção art. 53.º CIVA)."""
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=18 * mm, rightMargin=18 * mm,
+                            topMargin=16 * mm, bottomMargin=16 * mm)
+    right = ParagraphStyle("right", fontSize=9, alignment=TA_RIGHT)
+    title = ParagraphStyle("title", fontName="Helvetica-Bold", fontSize=16, leading=20, alignment=TA_RIGHT)
+    h = ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=9, leading=12)
+    n = ParagraphStyle("n", fontSize=9, leading=12)
+    small = ParagraphStyle("small", fontSize=7.5, leading=10, textColor=colors.grey)
+
+    created = datetime.fromtimestamp(purchase.get("created", time.time()), LOCAL_TZ)
+    plan = purchase.get("plan", "")
+    amount = purchase.get("amount_cents", 0)
+    num = purchase.get("num", "")
+    iva_pct = 0 if FATURA_ISENTO else 23
+    base = round(amount / (1 + iva_pct / 100)) if iva_pct else amount
+    iva = amount - base if iva_pct else 0
+
+    elements = [
+        Table(
+            [[Paragraph("<b>" + FATURA_NOME + "</b>", n),
+              Paragraph("FATURA-RECIBO", title)],
+             [Paragraph(f"NIF: {FATURA_NIF}<br/>" + FATURA_MORADA + f"<br/>CAE: {FATURA_CAE}", small),
+              Paragraph(f"<b>{num}</b><br/>{created.strftime('%d/%m/%Y %H:%M')}", right)]],
+            colWidths=[90 * mm, 84 * mm],
+        ),
+        Spacer(1, 10 * mm),
+        Paragraph("Cliente:", h),
+        Paragraph(f"{email}<br/>Consumidor final (particular)", n),
+        Spacer(1, 8 * mm),
+        Table(
+            [[Paragraph("Descrição", h), Paragraph("Qtd.", h), Paragraph("Preço unit.", h), Paragraph("Total", h)],
+             [Paragraph(PLAN_ITEMS.get(plan, plan), n), Paragraph("1", n),
+              Paragraph(_fmt_eur(amount), n), Paragraph(_fmt_eur(amount), n)]],
+            colWidths=[110 * mm, 20 * mm, 22 * mm, 22 * mm],
+            style=TableStyle([
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d8d2c5")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#f2eee6")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]),
+        ),
+        Spacer(1, 6 * mm),
+        Table(
+            [[Paragraph("Subtotal", n), Paragraph(_fmt_eur(base), right)],
+             [Paragraph("IVA (" + str(iva_pct) + "%)" if iva_pct else "IVA — Isento (art. 53.º do CIVA)", n),
+              Paragraph(_fmt_eur(iva) if iva_pct else "—", right)],
+             [Paragraph("<b>TOTAL</b>", n), Paragraph("<b>" + _fmt_eur(amount) + "</b>", right)]],
+            colWidths=[152 * mm, 42 * mm],
+            style=TableStyle([("LINEBELOW", (0, 0), (-1, -2), 0.4, colors.HexColor("#d8d2c5"))]),
+        ),
+        Spacer(1, 12 * mm),
+        Paragraph("Pagamento recebido via Stripe (online). Documento gerado automaticamente — não carece de assinatura.", small),
+    ]
+    doc.build(elements)
+    return buf.getvalue()
+
+
+@app.get("/api/backoffice/invoice")
+def backoffice_invoice(session_id: str = "", x_token: str = Header(default="")):
+    """Devolve o PDF da fatura-recibo de uma compra (identificada pela session_id do Stripe)."""
+    if _bo_tokens.get(x_token, 0) < time.time():
+        raise HTTPException(401, "Não autorizado.")
+    if not FATURA_NIF:
+        raise HTTPException(503, "Faturação não configurada: define FATURA_NIF (e FATURA_NOME/FATURA_MORADA) no Render.")
+    if not session_id:
+        raise HTTPException(400, "Falta session_id.")
+
+    with _lock:
+        users = _load_users()
+        for user_key, a in users.items():
+            for p in a.get("purchases", []):
+                if p.get("session_id") == session_id:
+                    purchase = p
+                    email = user_key
+                    break
+            else:
+                continue
+            break
+        else:
+            raise HTTPException(404, "Compra não encontrada.")
+        year = datetime.fromtimestamp(purchase.get("created", time.time()), LOCAL_TZ).year
+        num = _assign_invoice_number(users, purchase, year)
+        _save_users(users)
+
+    pdf = _invoice_pdf(purchase, email)
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="fatura-recibo-{num.replace("/", "-")}.pdf"'})

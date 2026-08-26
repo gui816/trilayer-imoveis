@@ -57,7 +57,7 @@ th{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#6f675c}
   <div class="card">
     <h3>Compras</h3>
     <table>
-      <thead><tr><th>Data</th><th>Utilizador</th><th>Plano</th><th>Valor</th><th>Sessão Stripe</th></tr></thead>
+      <thead><tr><th>Data</th><th>Utilizador</th><th>Plano</th><th>Valor</th><th>Fatura</th></tr></thead>
       <tbody id="purchases"></tbody>
     </table>
   </div>
@@ -109,8 +109,24 @@ async function load(){
       <td>${p.user}</td>
       <td><span class="badge">${p.plan}</span></td>
       <td>${(p.amount_cents/100).toFixed(2).replace(".", ",")} €</td>
-      <td class="muted" style="font-size:.72rem">${p.session}</td>
+      <td><button class="btn-sm" onclick="invoicePdf('${p.session}')">PDF</button></td>
     </tr>`).join("") || `<tr><td colspan="5" class="muted">Sem compras ainda.</td></tr>`;
+}
+
+async function invoicePdf(session){
+  const tok = sessionStorage.getItem("bo_token");
+  const r = await fetch("/api/backoffice/invoice?session_id=" + encodeURIComponent(session), {headers: {"X-Token": tok}});
+  if(!r.ok){
+    const j = await r.json().catch(() => ({}));
+    alert("Erro: " + (j.detail || r.status));
+    return;
+  }
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "fatura-recibo.pdf";
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 $("pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });

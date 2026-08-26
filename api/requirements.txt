@@ -3,3 +3,4 @@ uvicorn
 requests
 pydantic
 stripe
+reportlab

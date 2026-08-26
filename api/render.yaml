@@ -29,3 +29,13 @@ services:
         value: "10"
       - key: TZ
         value: Europe/Lisbon
+      - key: FATURA_NOME
+        sync: false
+      - key: FATURA_NIF
+        sync: false
+      - key: FATURA_MORADA
+        sync: false
+      - key: FATURA_CAE
+        value: "62090"
+      - key: FATURA_ISENTO
+        value: "1"

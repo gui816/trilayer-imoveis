@@ -68,7 +68,21 @@ GitHub → repo → Settings → Pages → Source: `main` / root →
 
 ### 4. Back-office
 `https://<api>.onrender.com/backoffice` → password = `BACKOFFICE_PASSWORD`.
-Mostra receita, contas, passes ativos e compras.
+Mostra receita, contas, passes ativos e compras — com botão **PDF** em cada compra
+para descarregar a **fatura-recibo** (gerada automaticamente, sem custos).
+
+### 5. Faturação (fatura-recibo, ENI)
+O PDF é gerado a partir dos dados de compra (data, cliente, plano, valor).
+Preencher no Render:
+- `FATURA_NOME` — o teu nome (ou nome comercial)
+- `FATURA_NIF` — o teu NIF (sem isto o endpoint devolve 503)
+- `FATURA_MORADA` — morada fiscal
+- `FATURA_CAE` — default `62090`
+- `FATURA_ISENTO` — `1` (default) → sem IVA, referência art. 53.º CIVA (isenção até 15.000 €/ano); `0` → IVA 23% destacado
+
+Numeracão sequencial automática por ano (`FT 2026/0001`…) e estável (mesma compra → mesmo número).
+> Nota: a comunicação à AT (app gratuita do Portal das Finanças) é manual — para volume de MVP,
+> 5 min/mês. Quando justificar, migrar para software certificado (ex: InvoiceXpress) com comunicação automática.
 
 ## Testes
 ```bash
