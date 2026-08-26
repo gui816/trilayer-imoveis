@@ -66,19 +66,21 @@ GitHub → repo → Settings → Pages → Source: `main` / root →
 > Nota dev: em local sem webhook público, podes testar com
 > `ALLOW_UNSIGNED_WEBHOOK=1` (aceita eventos sem assinatura — nunca em produção).
 
-### 4. Back-office
-`https://<api>.onrender.com/backoffice` → password = `BACKOFFICE_PASSWORD`.
-Mostra receita, contas, passes ativos e compras — com botão **PDF** em cada compra
-para descarregar a **fatura-recibo** (gerada automaticamente, sem custos).
+### 4. Back-office (super admin)
+`https://<api>.onrender.com/backoffice` — acesso com **email + password** da conta autorizada:
+- `SUPER_ADMIN_EMAIL` — email da conta que acede (se vazio, usa a conta `ADMIN_USER`)
 
-### 5. Faturação (fatura-recibo, ENI)
-O PDF é gerado a partir dos dados de compra (data, cliente, plano, valor).
-Preencher no Render:
+Painel completo: receita total + últimos 6 meses, passes ativos, contas (criação, passe,
+validade, usos hoje, gerações totais, gasto total), compras com nº de fatura e botão **PDF**
+(fatura-recibo automática), atividade recente (gerações), passes a expirar em 3 dias,
+estado do webhook, e **exportar CSV** das faturas para a comunicação à AT.
+
+Faturação — preencher no Render:
 - `FATURA_NOME` — o teu nome (ou nome comercial)
-- `FATURA_NIF` — o teu NIF (sem isto o endpoint devolve 503)
+- `FATURA_NIF` — o teu NIF (sem isto o PDF devolve 503)
 - `FATURA_MORADA` — morada fiscal
 - `FATURA_CAE` — default `62090`
-- `FATURA_ISENTO` — `1` (default) → sem IVA, referência art. 53.º CIVA (isenção até 15.000 €/ano); `0` → IVA 23% destacado
+- `FATURA_ISENTO` — `1` (default) → sem IVA, referência art. 53.º CIVA; `0` → IVA 23% destacado
 
 Numeracão sequencial automática por ano (`FT 2026/0001`…) e estável (mesma compra → mesmo número).
 > Nota: a comunicação à AT (app gratuita do Portal das Finanças) é manual — para volume de MVP,

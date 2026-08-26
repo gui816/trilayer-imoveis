@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Back-office · TriLayer Imóveis</title>
+<title>Super Admin · TriLayer Imóveis</title>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Inter',system-ui,sans-serif;background:#faf8f4;color:#2a2520;line-height:1.6;padding:2rem 1.2rem}
@@ -14,51 +14,77 @@ h1{font-size:1.3rem;margin-bottom:.4rem}
 input{width:100%;background:#f2eee6;border:1px solid rgba(42,37,32,.1);border-radius:9px;padding:.75rem 1rem;font-size:.92rem;outline:none;margin-bottom:.9rem}
 button{background:#176b57;color:#fff;border:none;border-radius:9px;padding:.8rem 1.3rem;font-weight:600;font-size:.9rem;cursor:pointer}
 button:hover{background:#125548}
+.btn-out{background:#fff;color:#176b57;border:1px solid rgba(23,107,87,.4)}
 .err{color:#c0392b;font-size:.8rem;min-height:1.2em}
-#app{display:none;max-width:1100px;margin:0 auto}
-.totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:1rem;margin-bottom:2rem}
-.t{background:#fff;border:1px solid rgba(42,37,32,.1);border-radius:12px;padding:1.1rem 1.3rem}
-.t .k{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6f675c}
-.t .v{font-family:'Georgia',serif;font-size:1.5rem;margin-top:.2rem}
-.card{background:#fff;border:1px solid rgba(42,37,32,.1);border-radius:14px;padding:1.4rem;margin-bottom:1.6rem}
-.card h3{font-size:.95rem;margin-bottom:1rem}
-table{width:100%;border-collapse:collapse;font-size:.83rem}
-th,td{text-align:left;padding:.55rem .6rem;border-bottom:1px solid rgba(42,37,32,.07)}
-th{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#6f675c}
+#app{display:none;max-width:1150px;margin:0 auto}
+.totals{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem;margin-bottom:1.2rem}
+.t{background:#fff;border:1px solid rgba(42,37,32,.1);border-radius:12px;padding:1rem 1.2rem}
+.t .k{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#6f675c}
+.t .v{font-family:'Georgia',serif;font-size:1.35rem;margin-top:.15rem}
+.card{background:#fff;border:1px solid rgba(42,37,32,.1);border-radius:14px;padding:1.3rem;margin-bottom:1.2rem}
+.card h3{font-size:.92rem;margin-bottom:.9rem;display:flex;justify-content:space-between;align-items:center}
+table{width:100%;border-collapse:collapse;font-size:.82rem}
+th,td{text-align:left;padding:.5rem .55rem;border-bottom:1px solid rgba(42,37,32,.07)}
+th{font-size:.66rem;text-transform:uppercase;letter-spacing:.05em;color:#6f675c}
 .badge{display:inline-block;background:rgba(23,107,87,.12);color:#176b57;border-radius:99px;padding:.15rem .6rem;font-size:.72rem;font-weight:700}
 .badge.off{background:rgba(192,57,43,.1);color:#c0392b}
 .muted{color:#6f675c}
-@media(max-width:640px){th:nth-child(n+3),td:nth-child(n+3){display:none}}
+.mini-btn{background:#f2eee6;color:#2a2520;border:1px solid rgba(42,37,32,.12);border-radius:6px;padding:.25rem .6rem;font-size:.72rem;font-weight:600;cursor:pointer}
+.mini-btn:hover{background:#e7e0d2}
+.month-row{display:flex;align-items:center;gap:.6rem;font-size:.82rem;margin-bottom:.35rem}
+.month-bar{height:12px;border-radius:99px;background:linear-gradient(90deg,#c9973f,#176b57);min-width:2px}
+.wh-ok{color:#16794a;font-weight:700}
+.wh-err{color:#c0392b;font-weight:700}
+@media(max-width:640px){th:nth-child(n+4),td:nth-child(n+4){display:none}}
 </style>
 </head>
 <body>
 
 <div id="login">
-  <h2>🔐 Back-office · TriLayer Imóveis</h2>
-  <input id="pw" type="password" placeholder="Password de acesso"/>
+  <h2>🔐 Super Admin · TriLayer Imóveis</h2>
+  <input id="lu" type="email" placeholder="email do super admin" autocomplete="email"/>
+  <input id="pw" type="password" placeholder="Password" autocomplete="current-password"/>
   <div class="err" id="err"></div>
   <button onclick="login()">Entrar</button>
 </div>
 
 <div id="app">
-  <h1>Back-office · TriLayer Imóveis</h1>
-  <div class="sub">Passes com validade (Stripe) — contas, compras e receita.</div>
+  <h1>Super Admin · TriLayer Imóveis</h1>
+  <div class="sub" id="who"></div>
 
   <div class="totals" id="totals"></div>
 
   <div class="card">
+    <h3>Receita últimos 6 meses <button class="mini-btn" onclick="exportCsv()">⬇ Exportar CSV faturas</button></h3>
+    <div id="monthly"></div>
+  </div>
+
+  <div class="card">
+    <h3>A expirar (próximos 3 dias)</h3>
+    <div id="expiring" class="muted">—</div>
+  </div>
+
+  <div class="card">
     <h3>Contas</h3>
     <table>
-      <thead><tr><th>Utilizador</th><th>Criada</th><th>Passe</th><th>Válido até</th><th>Usos hoje</th></tr></thead>
+      <thead><tr><th>Email</th><th>Criada</th><th>Passe</th><th>Válido até</th><th>Hoje</th><th>Gerações total</th><th>Gasto total</th><th>Compras</th></tr></thead>
       <tbody id="users"></tbody>
     </table>
   </div>
 
   <div class="card">
-    <h3>Compras</h3>
+    <h3>Compras / Faturas</h3>
     <table>
-      <thead><tr><th>Data</th><th>Utilizador</th><th>Plano</th><th>Valor</th><th>Fatura</th></tr></thead>
+      <thead><tr><th>Data</th><th>Email</th><th>Plano</th><th>Valor</th><th>Nº Fatura</th><th>PDF</th></tr></thead>
       <tbody id="purchases"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Atividade recente (gerações)</h3>
+    <table>
+      <thead><tr><th>Quando</th><th>Utilizador</th><th>Tipologia</th><th>Zona</th></tr></thead>
+      <tbody id="activity"></tbody>
     </table>
   </div>
 </div>
@@ -70,7 +96,7 @@ async function login(){
   const r = await fetch("/api/backoffice/login", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({password: $("pw").value})
+    body: JSON.stringify({user: $("lu").value.trim(), password: $("pw").value})
   });
   const j = await r.json().catch(() => ({}));
   if(!r.ok){ $("err").textContent = j.detail || "Erro."; return; }
@@ -86,13 +112,27 @@ async function load(){
   const j = await r.json();
   $("login").style.display = "none";
   $("app").style.display = "block";
+  $("who").textContent = "Sessão de super admin · webhook: " +
+    (j.webhook.falhas === 0 ? '<span class="wh-ok">sem falhas</span>' : '<span class="wh-err">' + j.webhook.falhas + ' falha(s) — ' + (j.webhook.ultimo_erro || "") + '</span>');
 
   const t = j.totals;
   $("totals").innerHTML = `
     <div class="t"><div class="k">Receita</div><div class="v">${(t.receita_cents/100).toFixed(2).replace(".", ",")} €</div></div>
     <div class="t"><div class="k">Passes ativos</div><div class="v">${t.passes_ativos}</div></div>
     <div class="t"><div class="k">Contas</div><div class="v">${t.contas}</div></div>
-    <div class="t"><div class="k">Dispositivos demo hoje</div><div class="v">${t.demo_dispositivos}</div></div>`;
+    <div class="t"><div class="k">Gerações</div><div class="v">${t.geracoes_totais}</div></div>
+    <div class="t"><div class="k">Gerações demo</div><div class="v">${t.geracoes_demo}</div></div>
+    <div class="t"><div class="k">Faturas emitidas</div><div class="v">${t.faturas}</div></div>`;
+
+  const max = Math.max(1, ...j.monthly.map(m => m.total_cents));
+  $("monthly").innerHTML = j.monthly.map(m => {
+    const v = (m.total_cents/100).toFixed(2).replace(".", ",");
+    return `<div class="month-row"><span style="width:70px">${m.mes}</span><div class="month-bar" style="width:${(m.total_cents/max)*60}%"></div><span>${v} €</span></div>`;
+  }).join("");
+
+  $("expiring").innerHTML = j.expiring.length
+    ? j.expiring.map(e => `<span class="badge">${e.user} até ${e.valid_until}</span>`).join(" ")
+    : "Nenhum passe a expirar nos próximos 3 dias.";
 
   $("users").innerHTML = j.users.map(u => `
     <tr>
@@ -101,6 +141,9 @@ async function load(){
       <td>${u.pass_type ? `<span class="badge">${u.pass_type}</span>` : `<span class="badge off">sem passe</span>`}</td>
       <td class="muted">${u.valid_until || "—"}</td>
       <td class="muted">${u.usos_hoje}</td>
+      <td class="muted">${u.total_generations}</td>
+      <td class="muted">${(u.total_gasto_cents/100).toFixed(2).replace(".", ",")} €</td>
+      <td class="muted">${u.compras}</td>
     </tr>`).join("");
 
   $("purchases").innerHTML = j.purchases.map(p => `
@@ -109,8 +152,13 @@ async function load(){
       <td>${p.user}</td>
       <td><span class="badge">${p.plan}</span></td>
       <td>${(p.amount_cents/100).toFixed(2).replace(".", ",")} €</td>
-      <td><button class="btn-sm" onclick="invoicePdf('${p.session}')">PDF</button></td>
-    </tr>`).join("") || `<tr><td colspan="5" class="muted">Sem compras ainda.</td></tr>`;
+      <td class="muted">${p.num || "—"}</td>
+      <td><button class="mini-btn" onclick="invoicePdf('${p.session}')">PDF</button></td>
+    </tr>`).join("") || `<tr><td colspan="6" class="muted">Sem compras ainda.</td></tr>`;
+
+  $("activity").innerHTML = j.activity.map(a => `
+    <tr><td class="muted">${a.quando}</td><td>${a.user}</td><td class="muted">${a.tipo || "—"}</td><td class="muted">${a.zona || "—"}</td></tr>
+    `).join("") || `<tr><td colspan="4" class="muted">Sem atividade ainda.</td></tr>`;
 }
 
 async function invoicePdf(session){
@@ -129,7 +177,20 @@ async function invoicePdf(session){
   URL.revokeObjectURL(a.href);
 }
 
+async function exportCsv(){
+  const tok = sessionStorage.getItem("bo_token");
+  const r = await fetch("/api/backoffice/faturas.csv", {headers: {"X-Token": tok}});
+  if(!r.ok){ alert("Erro ao exportar: " + r.status); return; }
+  const blob = await r.blob();
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "faturas.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
 $("pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
+$("lu").addEventListener("keydown", e => { if(e.key === "Enter") $("pw").focus(); });
 if(sessionStorage.getItem("bo_token")) load();
 </script>
 </body>

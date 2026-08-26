@@ -660,11 +660,38 @@ function clearAll(){
   setStatus("");
 }
 
-// Pagamento confirmado (volta do Stripe com #comprado)
+// Pagamento confirmado (volta do Stripe com #comprado): o webhook pode atrasar uns
+// segundos — faz polling ao /api/plan até o passe ficar ativo.
 if(location.hash === "#comprado"){
-  const okB = $("okBanner");
-  okB.style.display = "block";
-  setTimeout(() => { okB.style.display = "none"; }, 8000);
+  verifyPayment();
+}
+
+function verifyPayment(){
+  const s = getSession();
+  if(!s || !s.token) return;
+  let tries = 0;
+  const iv = setInterval(async () => {
+    tries++;
+    try{
+      const r = await fetch(API_URL + "/api/plan?token=" + encodeURIComponent(s.token));
+      const j = await r.json();
+      if(j.active){
+        clearInterval(iv);
+        const okB = $("okBanner");
+        okB.textContent = "✅ Pagamento confirmado — o teu passe está ativo até " + j.valid_until + ". Boas vendas!";
+        okB.style.display = "block";
+        renderPlanBar(j);
+        setTimeout(() => { okB.style.display = "none"; }, 12000);
+        return;
+      }
+    }catch(e){}
+    if(tries >= 15){
+      clearInterval(iv);
+      const okB = $("okBanner");
+      okB.textContent = "⏳ Se o pagamento foi concluído, o passe ativa em segundos. Se demorar, recarrega a página.";
+      okB.style.display = "block";
+    }
+  }, 2000);
 }
 
 // Auto-login se houver sessão guardada (token da API, login local ou demo); senão mostra a gate.

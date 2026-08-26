@@ -19,8 +19,10 @@ services:
         sync: false
       - key: SITE_URL
         value: https://gui816.github.io/trilayer-imoveis/
-      - key: BACKOFFICE_PASSWORD
+      - key: SUPER_ADMIN_EMAIL
         sync: false
+      - key: CORS_ORIGINS
+        value: "https://gui816.github.io,http://localhost:5500,http://127.0.0.1:5500,null"
       - key: MAX_ACTIVE_SESSIONS
         value: "1"
       - key: DEMO_LIMIT_PER_DAY

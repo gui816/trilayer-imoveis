@@ -10,7 +10,8 @@ Env vars:
   STRIPE_SECRET_KEY     (default "") — chave secreta Stripe (sk_test_... / sk_live_...)
   STRIPE_WEBHOOK_SECRET (default "") — assinatura do webhook (Dashboard → Webhooks)
   SITE_URL              (default https://gui816.github.io/trilayer-imoveis/) — para success/cancel do Checkout
-  BACKOFFICE_PASSWORD   (default = ADMIN_PASSWORD) — acesso ao /backoffice
+  SUPER_ADMIN_EMAIL     (default "") — email da conta que acede ao /backoffice (se vazio, a conta ADMIN_USER)
+  CORS_ORIGINS          (default GitHub Pages + localhost + null)
   MAX_ACTIVE_SESSIONS   (default 1) — 1 = unicidade de uso: novo login revoga as sessões
                                       anteriores, por isso a conta não pode ser partilhada
   DEMO_LIMIT_PER_DAY    (default 2)  — descrições demo grátis por dia e por dispositivo
@@ -32,13 +33,14 @@ Uso: contadores por conta (dia/semana/mês), não globais.
 
 import os
 import re
+import csv
 import json
 import time
 import hashlib
 import secrets
 import threading
 from datetime import datetime
-from io import BytesIO
+from io import BytesIO, StringIO
 from zoneinfo import ZoneInfo
 
 import requests
@@ -56,9 +58,15 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 
 app = FastAPI(title="TriLayer Imóveis API")
 
+# CORS: restrito ao site + origens de dev (mudar em CORS_ORIGINS quando quiseres)
+CORS_ORIGINS = [o.strip() for o in os.environ.get(
+    "CORS_ORIGINS",
+    "https://gui816.github.io,http://localhost:5500,http://127.0.0.1:5500,null",
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # GitHub Pages; restringir quando sair do teste
+    allow_origins=CORS_ORIGINS,
     allow_methods=["POST", "GET"],
     allow_headers=["*"],
 )
@@ -77,6 +85,10 @@ STRIPE_WEBHOOK_SECRET = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
 SITE_URL = os.environ.get("SITE_URL", "https://gui816.github.io/trilayer-imoveis/")
 ALLOW_UNSIGNED_WEBHOOK = os.environ.get("ALLOW_UNSIGNED_WEBHOOK", "0") == "1"
 LOCAL_TZ = ZoneInfo(os.environ.get("TZ", "Europe/Lisbon"))
+
+# Super admin: o email da conta que pode entrar no /backoffice.
+# Se vazio, cai para a conta ADMIN_USER (o dono).
+SUPER_ADMIN_EMAIL = os.environ.get("SUPER_ADMIN_EMAIL", "").strip().lower()
 
 # ── Faturação (fatura-recibo, ENI) ──────────────────────
 # Preenche FATURA_NIF para ativar; FATURA_ISENTO=1 (default) → art. 53.º CIVA (sem IVA).
@@ -97,6 +109,20 @@ IP_USAGE_FILE = os.path.join(BASE_DIR, "ip_usage.json")
 
 _lock = threading.Lock()
 _bo_tokens = {}  # token de back-office → expira (em memória; reinicia com o processo)
+_rate = {}  # rate limiting: (ip, acao) -> [timestamps]
+_wh_state = {"count": 0, "last_error": "", "last_ts": 0}  # falhas do webhook
+
+
+def _rate_limit(ip: str, acao: str, limit: int = 10, window: int = 900) -> None:
+    """Máx. `limit` tentativas por `window` segundos por IP+ação (anti brute-force)."""
+    now = time.time()
+    key = (ip, acao)
+    with _lock:
+        ts = [t for t in _rate.get(key, []) if now - t < window]
+        if len(ts) >= limit:
+            raise HTTPException(429, "Demasiadas tentativas. Tenta novamente em 15 minutos.")
+        ts.append(now)
+        _rate[key] = ts
 
 # ── Planos (passes com validade) ─────────────────────────
 # cap: (período_do_contador, máximo) — ("day", 20) limita o contador diário;
@@ -181,6 +207,7 @@ class CheckoutRequest(BaseModel):
 
 
 class BackofficeLogin(BaseModel):
+    user: str
     password: str
 
 
@@ -231,6 +258,8 @@ def _ensure_admin() -> None:
             "usage": _fresh_usage(),
             "pass": None,
             "purchases": [],
+            "total_generations": 0,
+            "log": [],
             "created": time.time(),
         }
         _save_users(users)
@@ -408,8 +437,9 @@ def health():
 
 
 @app.post("/api/register")
-def register(req: RegisterRequest):
+def register(req: RegisterRequest, request: Request):
     """Cria uma conta com email (necessária para comprar passes) e devolve sessão iniciada."""
+    _rate_limit(_client_ip(request), "register", limit=5)
     user = req.user.strip().lower()
     if len(user) > 254 or not EMAIL_RE.match(user):
         raise HTTPException(400, "Introduz um email válido (ex: agente@imobiliaria.pt).")
@@ -429,6 +459,8 @@ def register(req: RegisterRequest):
             "usage": _fresh_usage(),
             "pass": None,
             "purchases": [],
+            "total_generations": 0,
+            "log": [],
             "created": time.time(),
         }
         _save_users(users)
@@ -436,7 +468,8 @@ def register(req: RegisterRequest):
 
 
 @app.post("/api/login")
-def login(req: LoginRequest):
+def login(req: LoginRequest, request: Request):
+    _rate_limit(_client_ip(request), "login")
     user = req.user.strip().lower()
     with _lock:
         users = _load_users()
@@ -511,7 +544,10 @@ async def stripe_webhook(request: Request):
     if STRIPE_WEBHOOK_SECRET:
         try:
             event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
-        except Exception:
+        except Exception as e:
+            _wh_state["count"] += 1
+            _wh_state["last_error"] = str(e)[:200]
+            _wh_state["last_ts"] = time.time()
             raise HTTPException(400, "Assinatura do webhook inválida.")
     elif ALLOW_UNSIGNED_WEBHOOK:
         event = json.loads(payload)  # modo dev: sem validação (nunca em produção)
@@ -624,6 +660,10 @@ def generate(req: GenerateRequest, request: Request):
 
             usage["day_count"] += 1
             acc["usage"] = usage
+            acc["total_generations"] = acc.get("total_generations", 0) + 1
+            log = acc.setdefault("log", [])
+            log.append({"t": time.time(), "user": "demo", "tipo": req.dados.tipologia, "zona": req.dados.zona})
+            acc["log"] = log[-20:]
             users[key] = acc
             _save_users(users)
             _bump_ip(ip)
@@ -672,6 +712,10 @@ def generate(req: GenerateRequest, request: Request):
         usage["day_count"] += 1
         usage["week_count"] += 1
         usage["month_count"] += 1
+        acc["total_generations"] = acc.get("total_generations", 0) + 1
+        log = acc.setdefault("log", [])
+        log.append({"t": time.time(), "user": user_key, "tipo": req.dados.tipologia, "zona": req.dados.zona})
+        acc["log"] = log[-20:]
         _save_users(users)
 
     if is_admin or pass_type == "month":
@@ -715,14 +759,24 @@ def demo_status(device_id: str = ""):
     return {"demo": True, "usos_hoje": usage["day_count"], "limite": DEMO_LIMIT_PER_DAY}
 
 
-# ── Back-office ──────────────────────────────────────────
+# ── Back-office (super admin) ──────────────────────────
 @app.post("/api/backoffice/login")
-def backoffice_login(req: BackofficeLogin):
-    if req.password != BACKOFFICE_PASSWORD:
-        raise HTTPException(401, "Password incorreta.")
+def backoffice_login(req: BackofficeLogin, request: Request):
+    """Entrada do super admin: email + password da conta autorizada.
+    Autorizado: SUPER_ADMIN_EMAIL (env) ou, se não definido, a conta ADMIN_USER."""
+    _rate_limit(_client_ip(request), "backoffice", limit=10)
+    user = req.user.strip().lower()
+    allowed = (SUPER_ADMIN_EMAIL and user == SUPER_ADMIN_EMAIL) or (not SUPER_ADMIN_EMAIL and user == ADMIN_USER)
+    if not allowed:
+        raise HTTPException(401, "Conta sem acesso de administrador.")
+    with _lock:
+        users = _load_users()
+        acc = users.get(user)
+        if not acc or _hash_secret(req.password, acc["password_salt"]) != acc["password_hash"]:
+            raise HTTPException(401, "Email ou password incorretos.")
     tok = secrets.token_urlsafe(24)
     _bo_tokens[tok] = time.time() + 12 * 3600
-    return {"token": tok}
+    return {"token": tok, "user": user}
 
 
 @app.get("/api/backoffice/data")
@@ -730,45 +784,113 @@ def backoffice_data(x_token: str = Header(default="")):
     if _bo_tokens.get(x_token, 0) < time.time():
         raise HTTPException(401, "Não autorizado.")
     users = _load_users()
-    rows, purchases = [], []
+    rows, purchases, activity = [], [], []
     revenue_cents = 0
     active_passes = 0
     demo_users = 0
+    generations_total = 0
+    generations_demo = 0
+    invoices_count = 0
     now = time.time()
+    monthly = {}
+    expiring = []
     for k, a in users.items():
         if k.startswith("demo:"):
             demo_users += 1
+            generations_demo += a.get("total_generations", 0)
+            for e in a.get("log", []):
+                activity.append(e)
             continue
         pass_type, valid_until = _active_pass(a, now)
         if pass_type:
             active_passes += 1
+            if valid_until - now < 72 * 3600:
+                expiring.append({"user": k, "valid_until": _iso(valid_until)})
+        total_spent = sum(p.get("amount_cents", 0) for p in a.get("purchases", []))
+        generations_total += a.get("total_generations", 0)
         rows.append({
             "user": k,
             "created": _iso(a.get("created", 0)),
             "pass_type": pass_type,
             "valid_until": _iso(valid_until) if pass_type else None,
             "usos_hoje": (a.get("usage") or {}).get("day_count", 0),
+            "total_generations": a.get("total_generations", 0),
+            "total_gasto_cents": total_spent,
+            "compras": len(a.get("purchases", [])),
         })
         for p in a.get("purchases", []):
             revenue_cents += p.get("amount_cents", 0)
+            created = p.get("created", 0)
+            mes = datetime.fromtimestamp(created, LOCAL_TZ).strftime("%Y-%m") if created else ""
+            if mes:
+                monthly[mes] = monthly.get(mes, 0) + p.get("amount_cents", 0)
+            if p.get("num"):
+                invoices_count += 1
             purchases.append({
                 "user": k,
                 "plan": p.get("plan", ""),
                 "amount_cents": p.get("amount_cents", 0),
-                "created": _iso(p.get("created", 0)),
+                "created": _iso(created) if created else "",
+                "num": p.get("num", ""),
                 "session": p.get("session_id", ""),
             })
+        for e in a.get("log", []):
+            activity.append(e)
     purchases.sort(key=lambda x: x["created"] or "", reverse=True)
+    activity.sort(key=lambda e: e.get("t", 0), reverse=True)
+    activity = [{"quando": _iso(e.get("t", 0)), "user": e.get("user", ""), "tipo": e.get("tipo", ""), "zona": e.get("zona", "")} for e in activity[:30]]
+    # últimos 6 meses (ordenados) com receita
+    months = []
+    base = datetime.now(LOCAL_TZ).replace(day=1)
+    for i in range(5, -1, -1):
+        y, mo = (base.year, base.month - i)
+        while mo <= 0:
+            y -= 1
+            mo += 12
+        key = f"{y:04d}-{mo:02d}"
+        months.append({"mes": key, "total_cents": monthly.get(key, 0)})
     return {
         "totals": {
             "receita_cents": revenue_cents,
             "passes_ativos": active_passes,
             "contas": len(rows),
             "demo_dispositivos": demo_users,
+            "geracoes_totais": generations_total,
+            "geracoes_demo": generations_demo,
+            "faturas": invoices_count,
         },
+        "monthly": months,
+        "expiring": expiring,
+        "webhook": {"falhas": _wh_state["count"], "ultimo_erro": _wh_state["last_error"], "ultima": _iso(_wh_state["last_ts"])},
         "users": sorted(rows, key=lambda r: r["user"]),
         "purchases": purchases[:200],
+        "activity": activity,
     }
+
+
+@app.get("/api/backoffice/faturas.csv")
+def backoffice_faturas_csv(x_token: str = Header(default="")):
+    """CSV de todas as faturas para a comunicação mensal à AT."""
+    if _bo_tokens.get(x_token, 0) < time.time():
+        raise HTTPException(401, "Não autorizado.")
+    users = _load_users()
+    out = StringIO()
+    w = csv.writer(out, delimiter=";")
+    w.writerow(["NumeroFatura", "Data", "EmailCliente", "Plano", "ValorEUR", "SessionStripe"])
+    for k, a in users.items():
+        if k.startswith("demo:"):
+            continue
+        for p in sorted(a.get("purchases", []), key=lambda x: x.get("created", 0)):
+            w.writerow([
+                p.get("num", ""),
+                _iso(p.get("created", 0)),
+                k,
+                p.get("plan", ""),
+                f"{p.get('amount_cents', 0) / 100:.2f}".replace(".", ","),
+                p.get("session_id", ""),
+            ])
+    return Response(content=out.getvalue().encode("utf-8-sig"), media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="faturas.csv"'})
 
 
 @app.get("/backoffice")
