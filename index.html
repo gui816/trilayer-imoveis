@@ -70,6 +70,7 @@ nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:
 .r-label button{background:var(--muted);border:1px solid var(--border);color:var(--text);border-radius:6px;padding:.3rem .7rem;font-size:.7rem;cursor:pointer}
 .r-label button:hover{background:rgba(255,255,255,.1)}
 .r-text{white-space:pre-wrap;font-size:.92rem;color:var(--text)}
+.r-text.r-en{margin-top:.45rem;color:var(--sub);font-style:italic;font-size:.86rem}
 .r-faq{margin-top:1.5rem}
 .r-faq-item{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:.9rem 1.1rem;margin-bottom:.6rem}
 .r-faq-item strong{color:var(--v);font-size:.84rem;display:block;margin-bottom:.25rem}
@@ -403,10 +404,10 @@ function render(j){
   $("usage").textContent = j.demo
     ? "Demo hoje: " + j.usos_hoje + "/" + j.limite
     : "Hoje " + j.usos_hoje + "/" + j.limite + " · Semana " + j.usos_semana + "/" + j.limite_semana + " · Mês " + j.usos_mes + "/" + j.limite_mes;
-  const titulos = (j.titulos_seo || []).map((t, i) => block("Título " + (i + 1) + " (SEO)", t)).join("");
-  $("r_title").innerHTML = '<div class="r-label">Escolhe um dos 3 títulos</div>' + titulos;
-  const ganchos = (j.ganchos || []).map((g, i) => block("Abertura " + (i + 1), g)).join("");
-  $("r_short").innerHTML = '<div class="r-label">Escolhe uma das 3 aberturas</div>' + ganchos;
+  const titulos = (j.titulos_seo || []).map((t, i) => block2("Título " + (i + 1) + " (SEO)", t, (j.titulos_en || [])[i] || "")).join("");
+  $("r_title").innerHTML = '<div class="r-label">Escolhe um dos 3 títulos (PT-PT e EN)</div>' + titulos;
+  const ganchos = (j.ganchos || []).map((g, i) => block2("Abertura " + (i + 1), g, (j.ganchos_en || [])[i] || "")).join("");
+  $("r_short").innerHTML = '<div class="r-label">Escolhe uma das 3 aberturas (PT-PT e EN)</div>' + ganchos;
   $("r_long").innerHTML = block("Descrição longa PT-PT", j.descricao_longa);
   $("r_en").innerHTML = block("Versão EN (compradores estrangeiros)", j.descricao_en);
   let faq = '<div class="r-faq"><div class="r-label">Respostas a perguntas frequentes</div>';
@@ -420,6 +421,10 @@ function render(j){
 
 function block(label, text){
   return `<div class="r-block"><div class="r-label">${label} <button onclick="copy(this,'${escAttr(text)}')">Copiar</button></div><div class="r-text">${esc(text)}</div></div>`;
+}
+
+function block2(label, pt, en){
+  return `<div class="r-block"><div class="r-label">${label} <button onclick="copy(this,'${escAttr(pt)}')">Copiar PT</button> <button onclick="copy(this,'${escAttr(en)}')">Copiar EN</button></div><div class="r-text">${esc(pt)}</div><div class="r-text r-en">EN: ${esc(en)}</div></div>`;
 }
 
 async function copy(btn, text){
@@ -449,10 +454,20 @@ function renderPreview(){
       "Alvalade: T2 reabilitado em 2023, a 5 min do metro",
       "Viver em Alvalade: T2 com piscina, garagem e luz até ao fim do dia"
     ],
+    titulos_en: [
+      "Renovated 2-bed with garage and balcony in Alvalade — €295,000",
+      "Alvalade: 2-bed renovated in 2023, 5 min from the metro",
+      "Living in Alvalade: 2-bed with pool, garage and evening sun"
+    ],
     ganchos: [
       "A 5 minutos do metro, este T2 reabilitado em 2023 é o equilíbrio certo entre bairro tranquilo e cidade à porta.",
       "Há casas que se visitam e casas onde se fica — esta varanda virada a poente faz parte das segundas.",
       "87 m² de área bruta, certificado energético B- e condomínio com piscina: os números falam por si."
+    ],
+    ganchos_en: [
+      "Five minutes from the metro, this fully renovated two-bedroom flat strikes the right balance between a quiet neighbourhood and city living.",
+      "Some homes you visit; others you stay in — this west-facing balcony belongs to the second kind.",
+      "87 sqm of gross area, energy certificate B- and a communal pool: the numbers speak for themselves."
     ],
     descricao_curta: "T2 reabilitado em 2023 em Alvalade, a 5 minutos do metro. 87 m², varanda virada a poente, garagem e arrecadação. Certificado energético B-.",
     descricao_longa: "No coração de Alvalade, este T2 reabilitado em 2023 combina a tranquilidade de um dos bairros mais procurados de Lisboa com acesso imediato a transportes, escolas e comércio. Com 87 m² de área bruta, a sala ampla abre para uma varanda de 8 m² virada a poente, perfeita para o final do dia. A cozinha está totalmente equipada e o imóvel inclui garagem, arrecadação e condomínio com piscina. Certificado energético B-. Ideal para quem quer viver em Lisboa sem abrir mão de qualidade de vida — ou para investidores à procura de mais-valia.\n\nA 5 minutos a pé do metro de Alvalade e a 10 minutos do aeroporto, numa zona com escolas, supermercados e restaurantes que mantém a identidade de bairro.",
