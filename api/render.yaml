@@ -41,3 +41,9 @@ services:
         value: "62090"
       - key: FATURA_ISENTO
         value: "1"
+      - key: RESEND_API_KEY
+        sync: false
+      - key: RESEND_FROM
+        value: "TriLayer Imóveis <onboarding@resend.dev>"
+      - key: CRON_SECRET
+        sync: false

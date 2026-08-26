@@ -153,6 +153,12 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 .ba-tag{font-size:.66rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase;display:block;margin-bottom:.5rem}
 .ba-card.before .ba-tag{color:#a39680}
 .ba-card.after .ba-tag{color:var(--v)}
+.mode-tabs{display:flex;background:var(--bg3);border-radius:9px;padding:.25rem;margin-bottom:1.1rem;max-width:520px}
+.mode-tabs .gate-tab{flex:1}
+.h-item{display:flex;align-items:center;justify-content:space-between;gap:.8rem;padding:.6rem .1rem;border-bottom:1px solid var(--border);font-size:.84rem}
+.h-item:last-child{border-bottom:none}
+.h-item .h-meta{color:var(--sub)}
+.h-item .h-actions{display:flex;gap:.4rem;flex-wrap:wrap}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -226,6 +232,14 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 
   <div class="card" id="form-card">
     <h3>Dados do imóvel</h3>
+    <div class="mode-tabs">
+      <button class="gate-tab active" id="modeZero" onclick="setMode('zero')">⚡ Gerar do zero</button>
+      <button class="gate-tab" id="modeRefine" onclick="setMode('refine')">✏️ Melhorar anúncio existente</button>
+    </div>
+    <div class="field" id="refineWrap" style="display:none">
+      <label>Anúncio existente (cola o texto atual — a IA reescreve em PT-PT)</label>
+      <textarea id="f_existente" style="min-height:140px" placeholder="T2 no centro de Lisboa, apartamento incrível, 87m2, super charmoso, com garagem e arrecadação, condomínio fechado com piscina…"></textarea>
+    </div>
     <div class="grid">
       <div class="field"><label>Tipologia</label><input id="f_tipo" placeholder="T2"/></div>
       <div class="field"><label>Preço (€)</label><input id="f_preco" placeholder="295000"/></div>
@@ -252,6 +266,11 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <div id="r_long"></div>
     <div id="r_en"></div>
     <div id="r_faq"></div>
+  </div>
+
+  <div class="card" id="historyCard" style="display:none">
+    <h3 style="display:flex;justify-content:space-between;align-items:center">As minhas descrições <button class="btn-sm" onclick="loadHistory()">Atualizar</button></h3>
+    <div id="historyList" class="muted" style="font-size:.85rem">A carregar…</div>
   </div>
 
   <div class="ba">
@@ -360,6 +379,7 @@ function setSession(user, token){ localStorage.setItem(SESSION_KEY, JSON.stringi
 function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 
 let gateModeNow = "login";
+let modeNow = "zero";
 function gateMode(m){
   gateModeNow = m;
   $("tabLogin").className = "gate-tab" + (m === "login" ? " active" : "");
@@ -437,6 +457,7 @@ function showApp(){
   if(isDemoSession()){ $("demoBanner").style.display = "block"; refreshDemoBanner(); }
   else { $("demoBanner").style.display = "none"; }
   refreshPlan();
+  loadHistory();
 }
 
 function ctaDemo(){
@@ -523,6 +544,13 @@ async function confirmBuy(){
 
 function setStatus(msg, cls){ const s = $("status"); s.textContent = msg; s.className = cls || ""; }
 
+function setMode(m){
+  modeNow = m;
+  $("modeZero").className = "gate-tab" + (m === "zero" ? " active" : "");
+  $("modeRefine").className = "gate-tab" + (m === "refine" ? " active" : "");
+  $("refineWrap").style.display = m === "refine" ? "block" : "none";
+}
+
 async function generate(){
   const s = getSession();
   if(s && s.local){
@@ -531,6 +559,7 @@ async function generate(){
     return;
   }
   const isDemo = !(s && s.token);
+  const isRefine = modeNow === "refine";
   const dados = {
     tipologia: $("f_tipo").value.trim(),
     preco: $("f_preco").value.trim(),
@@ -540,10 +569,15 @@ async function generate(){
     estado: $("f_estado").value.trim(),
     caracteristicas: $("f_carac").value.trim(),
     publico: $("f_pub").value.trim(),
-    extra: $("f_extra").value.trim()
+    extra: $("f_extra").value.trim(),
+    anuncio_existente: $("f_existente").value.trim()
   };
-  if(!dados.tipologia || !dados.zona){ setStatus("Tipologia e zona são obrigatórios.", "err"); return; }
-  setStatus('<span class="spinner"></span>A gerar 3 opções… (~1 min)');
+  if(isRefine){
+    if(!dados.anuncio_existente){ setStatus("Cola o anúncio que queres melhorar.", "err"); return; }
+  } else {
+    if(!dados.tipologia || !dados.zona){ setStatus("Tipologia e zona são obrigatórios.", "err"); return; }
+  }
+  setStatus('<span class="spinner"></span>' + (isRefine ? "A melhorar o anúncio… (~1 min)" : "A gerar 3 opções… (~1 min)"));
   try{
     const r = await fetch(API_URL + "/api/generate", {
       method: "POST",
@@ -564,6 +598,7 @@ async function generate(){
     render(j);
     setStatus("✓ Pronto em " + (j.segundos || "?") + "s", "ok");
     refreshPlan();
+    loadHistory();
   }catch(e){
     setStatus("Erro de rede. Verifica se a API está online.", "err");
   }
@@ -590,6 +625,56 @@ function render(j){
 }
 
 function fmtLim(v){ return (v === null || v === undefined) ? "∞" : v; }
+
+// ── Histórico (área do cliente) ──
+async function loadHistory(){
+  const s = getSession();
+  if(!s || !s.token || s.demo || s.local){ $("historyCard").style.display = "none"; return; }
+  $("historyCard").style.display = "block";
+  try{
+    const r = await fetch(API_URL + "/api/history", {headers: {"X-Token": s.token}});
+    const j = await r.json();
+    if(!r.ok || !j.items || !j.items.length){
+      $("historyList").innerHTML = "Ainda não tens descrições guardadas — cada geração fica aqui.";
+      return;
+    }
+    $("historyList").innerHTML = j.items.map(h => `
+      <div class="h-item">
+        <span class="h-meta">${h.quando} · ${h.refine ? "✏️ melhorado" : "⚡ gerado"} · ${esc(h.tipo || "—")}${h.zona ? " · " + esc(h.zona) : ""}</span>
+        <span class="h-actions">
+          <button class="btn-sm" onclick="openHistory('${h.id}')">Abrir</button>
+          <button class="btn-sm" onclick="delHistory('${h.id}')">Apagar</button>
+        </span>
+      </div>`).join("");
+  }catch(e){
+    $("historyList").textContent = "Erro ao carregar o histórico.";
+  }
+}
+
+async function openHistory(id){
+  const s = getSession();
+  if(!s || !s.token) return;
+  try{
+    const r = await fetch(API_URL + "/api/history/" + id, {headers: {"X-Token": s.token}});
+    const j = await r.json();
+    if(!r.ok){ setStatus(j.detail || "Erro ao abrir.", "err"); return; }
+    render(j.item);
+    setStatus("📁 Descrição de " + j.item.quando + (j.item.tipo ? " · " + j.item.tipo : ""), "ok");
+    $("results").scrollIntoView({behavior:"smooth"});
+  }catch(e){
+    setStatus("Erro de rede.", "err");
+  }
+}
+
+async function delHistory(id){
+  const s = getSession();
+  if(!s || !s.token) return;
+  if(!confirm("Apagar esta descrição?")) return;
+  try{
+    await fetch(API_URL + "/api/history/" + id, {method: "DELETE", headers: {"X-Token": s.token}});
+    loadHistory();
+  }catch(e){}
+}
 
 function block(label, text){
   return `<div class="r-block"><div class="r-label">${label} <button onclick="copy(this,'${escAttr(text)}')">Copiar</button></div><div class="r-text">${esc(text)}</div></div>`;
@@ -655,7 +740,7 @@ function renderPreview(){
 }
 
 function clearAll(){
-  ["f_tipo","f_preco","f_zona","f_area","f_andar","f_estado","f_carac","f_pub","f_extra"].forEach(id=>$(id).value="");
+  ["f_tipo","f_preco","f_zona","f_area","f_andar","f_estado","f_carac","f_pub","f_extra","f_existente"].forEach(id=>$(id).value="");
   $("results").style.display = "none";
   setStatus("");
 }

@@ -26,6 +26,9 @@ Compra um passe de acesso por um período; o acesso é ativado de imediato e **n
 - Conta `ADMIN_USER` tem bypass (não precisa de passe — é do dono)
 - Demo anónima: 2 descrições/dia por dispositivo (+ teto por IP)
 - Registo com **email** (sem verificação por agora) — o email da conta é o destinatário do recibo do Stripe
+- **Histórico**: cada geração fica guardada na conta (máx. 50) — "As minhas descrições" na página
+- **Modo refinar**: cola um anúncio existente e a IA reescreve em PT-PT (mantém factos, corrige pt-BR, mesma saída) — conta 1 geração
+- **Lembretes de expiração**: cron diário envia email 72h antes do passe expirar (Resend)
 
 ## Deploy
 
@@ -85,6 +88,13 @@ Faturação — preencher no Render:
 Numeracão sequencial automática por ano (`FT 2026/0001`…) e estável (mesma compra → mesmo número).
 > Nota: a comunicação à AT (app gratuita do Portal das Finanças) é manual — para volume de MVP,
 > 5 min/mês. Quando justificar, migrar para software certificado (ex: InvoiceXpress) com comunicação automática.
+
+### 6. Lembretes de expiração (emails)
+- Criar conta em **resend.com** (grátis, 3.000 emails/mês) → API key → `RESEND_API_KEY` no Render
+- `RESEND_FROM` — remetente (default `TriLayer Imóveis <onboarding@resend.dev>`; com domínio próprio, ex: `avisos@casaquevende.pt`)
+- `CRON_SECRET` — segredo para o cron diário
+- Endpoint: `POST /api/cron/expiring-reminders` com header `X-Cron-Secret` — envia email aos clientes com passe a expirar em 72h (uma vez por validade)
+- Cron local (OpenClaw, 09:00 Lisboa): lê `~/.openclaw/workspace/trilayer-cron.env` e chama o endpoint — job `trilayer-expiry-reminders`
 
 ## Testes
 ```bash

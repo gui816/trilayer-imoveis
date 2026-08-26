@@ -86,6 +86,12 @@ SITE_URL = os.environ.get("SITE_URL", "https://gui816.github.io/trilayer-imoveis
 ALLOW_UNSIGNED_WEBHOOK = os.environ.get("ALLOW_UNSIGNED_WEBHOOK", "0") == "1"
 LOCAL_TZ = ZoneInfo(os.environ.get("TZ", "Europe/Lisbon"))
 
+# Emails (lembretes de expiração) — Resend: https://resend.com (grátis até 3k/mês)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM = os.environ.get("RESEND_FROM", "TriLayer Imóveis <onboarding@resend.dev>")
+# Segredo para o cron diário chamar /api/cron/expiring-reminders sem token de admin
+CRON_SECRET = os.environ.get("CRON_SECRET", "")
+
 # Super admin: o email da conta que pode entrar no /backoffice.
 # Se vazio, cai para a conta ADMIN_USER (o dono).
 SUPER_ADMIN_EMAIL = os.environ.get("SUPER_ADMIN_EMAIL", "").strip().lower()
@@ -170,6 +176,44 @@ REGRAS DOS 3 TÍTULOS E 3 ABERTURAS:
 """
 
 
+SYSTEM_PROMPT_REFINE = """És um copywriter especialista em imobiliário português (Portugal, pt-PT).
+
+O utilizador cola um ANÚNCIO EXISTENTE (muitas vezes escrito em pt-BR, com erros ou sem força de venda) e quer que o reescrevas.
+
+REGRAS DO REFINAMENTO:
+- Mantém TODOS os factos do anúncio original: áreas, preços, andares, características, localização. NUNCA inventes informação que não esteja no texto.
+- Corrige pt-BR para pt-PT: proibido "apartamento de 2 quartos", "armários", "varanda gourmet", "cozinha americana" (diz "cozinha em open space"), "andar alto", "condomínio fechado" (diz "condomínio privado"), "vista maravilhosa" (diz "vista desafogada").
+- Vocabulário PT-PT: fração, arrecadação, área bruta/útil, tipologia T0-T5, certificado energético, licença de utilização, 3.º andar, condomínio privado.
+- Melhora estrutura, tom e clareza; corta repetições, exageros e chavões de agência ("oportunidade única" no máximo 1x; nada de "sonho"/"magnífico" repetidos).
+- Tom: profissional e caloroso, sóbrio. Se faltar informação, omite ou generaliza — não inventes.
+- Preço: escreve como "295.000 €".
+- A descrição EN é tradução natural para inglês (UK), não literal, com o mesmo tom.
+
+RESPONDE APENAS COM JSON válido, sem markdown, com esta estrutura exata:
+{
+  "titulos_seo": ["Título SEO 1", "Título SEO 2", "Título SEO 3"],
+  "titulos_en": ["English SEO title 1", "English SEO title 2", "English SEO title 3"],
+  "ganchos": ["Primeira frase de abertura 1", "Abertura 2", "Abertura 3"],
+  "ganchos_en": ["English opening 1", "English opening 2", "English opening 3"],
+  "descricao_curta": "máx. 300 caracteres, 1 parágrafo",
+  "descricao_longa": "600-900 caracteres, 3-4 parágrafos, PT-PT",
+  "descricao_en": "versão inglesa da longa",
+  "perguntas_respostas": [
+    {"pergunta": "...", "resposta": "..."},
+    {"pergunta": "...", "resposta": "..."},
+    {"pergunta": "...", "resposta": "..."},
+    {"pergunta": "...", "resposta": "..."}
+  ]
+}
+
+REGRAS DOS 3 TÍTULOS E 3 ABERTURAS:
+- Ângulos diferentes: localização, características/chave de venda, estilo de vida ou preço. Cada título máx. 60 caracteres.
+- Tons diferentes: sóbrio/profissional, emocional/envolvente, técnico/detalhado. Cada gancho máx. 160 caracteres.
+- `titulos_en` e `ganchos_en` são traduções naturais (UK) com o mesmo ângulo e tom.
+- A descrição longa deve começar com o gancho 1 como abertura padrão.
+"""
+
+
 class DadosImovel(BaseModel):
     tipologia: str = ""
     preco: str = ""
@@ -180,6 +224,7 @@ class DadosImovel(BaseModel):
     caracteristicas: str = ""
     publico: str = ""
     extra: str = ""
+    anuncio_existente: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -411,6 +456,18 @@ def parse_json(text: str) -> dict:
 
 
 def build_prompt(d: DadosImovel) -> str:
+    """Modo refinar quando há anúncio existente; caso contrário, geração do zero."""
+    if d.anuncio_existente.strip():
+        ctx = []
+        if d.tipologia:
+            ctx.append(f"Tipologia: {d.tipologia}")
+        if d.zona:
+            ctx.append(f"Zona: {d.zona}")
+        if d.preco:
+            ctx.append(f"Preço: {d.preco} €")
+        extra = f"\nContexto extra: {d.extra}." if d.extra else ""
+        contexto = ("\n".join(ctx) if ctx else "sem contexto adicional") + extra
+        return f"{SYSTEM_PROMPT_REFINE}\n\nANÚNCIO EXISTENTE:\n{d.anuncio_existente.strip()}\n\nCONTEXTO (opcional):\n{contexto}"
     linha = (
         f"Imóvel: {d.tipologia} em {d.zona}"
         + (f", {d.area} m² de área bruta" if d.area else "")
@@ -624,6 +681,101 @@ def plan_status(token: str = ""):
     }
 
 
+# ── Histórico de descrições (área do cliente) ──────────
+@app.get("/api/history")
+def history_list(token: str = "", x_token: str = Header(default="")):
+    auth_token = x_token or token
+    with _lock:
+        users = _load_users()
+        _, acc, _ = _find_by_token(users, auth_token)
+        if not acc:
+            raise HTTPException(401, "Sessão inválida.")
+        items = [
+            {"id": h["id"], "quando": _iso(h.get("t", 0)), "tipo": h.get("tipo", ""), "zona": h.get("zona", ""), "refine": h.get("refine", False)}
+            for h in reversed(acc.get("history", []))
+        ]
+    return {"items": items}
+
+
+@app.get("/api/history/{hid}")
+def history_get(hid: str, token: str = "", x_token: str = Header(default="")):
+    auth_token = x_token or token
+    with _lock:
+        users = _load_users()
+        _, acc, _ = _find_by_token(users, auth_token)
+        if not acc:
+            raise HTTPException(401, "Sessão inválida.")
+        for h in acc.get("history", []):
+            if h["id"] == hid:
+                return {"item": {**h.get("result", {}), "quando": _iso(h.get("t", 0)), "tipo": h.get("tipo", ""), "zona": h.get("zona", "")}}
+    raise HTTPException(404, "Descrição não encontrada.")
+
+
+@app.delete("/api/history/{hid}")
+def history_delete(hid: str, token: str = "", x_token: str = Header(default="")):
+    auth_token = x_token or token
+    with _lock:
+        users = _load_users()
+        _, acc, _ = _find_by_token(users, auth_token)
+        if not acc:
+            raise HTTPException(401, "Sessão inválida.")
+        before = len(acc.get("history", []))
+        acc["history"] = [h for h in acc.get("history", []) if h["id"] != hid]
+        _save_users(users)
+        if len(acc.get("history", [])) == before:
+            raise HTTPException(404, "Descrição não encontrada.")
+    return {"ok": True}
+
+
+# ── Cron: lembretes de expiração de passes (email) ──────
+@app.post("/api/cron/expiring-reminders")
+def cron_expiring_reminders(x_cron_secret: str = Header(default="")):
+    """Chamado diariamente (cron) — envia email aos clientes com passe a expirar em 72h."""
+    if not CRON_SECRET or x_cron_secret != CRON_SECRET:
+        raise HTTPException(403, "Não autorizado.")
+    if not RESEND_API_KEY:
+        raise HTTPException(503, "RESEND_API_KEY não configurada — cria conta em resend.com e define a variável.")
+    now = time.time()
+    sent = 0
+    pending = 0
+    with _lock:
+        users = _load_users()
+        for k, a in users.items():
+            if k.startswith("demo:"):
+                continue
+            pass_type, valid_until = _active_pass(a, now)
+            if not pass_type or valid_until - now > 72 * 3600:
+                continue
+            if a.get("reminded") == valid_until:
+                continue  # já avisado para esta validade
+            pending += 1
+            try:
+                r = requests.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                    json={
+                        "from": RESEND_FROM,
+                        "to": [k],
+                        "subject": f"O teu passe {PLANS[pass_type]['label'].lower()} expira em breve",
+                        "html": (
+                            f"<p>Olá,</p>"
+                            f"<p>O teu passe <b>{PLANS[pass_type]['label'].lower()}</b> expira a <b>{_iso(valid_until)}</b> (hora de Lisboa).</p>"
+                            f"<p>Renova em 1 minuto: <a href='{SITE_URL}'>casa que vende</a> — sem mensalidades, pagas quando precisares.</p>"
+                        ),
+                    },
+                    timeout=15,
+                )
+                if r.status_code in (200, 201):
+                    a["reminded"] = valid_until
+                    sent += 1
+                else:
+                    pending -= 1  # falhou, tenta outra vez amanhã
+            except Exception:
+                pending -= 1
+        _save_users(users)
+    return {"enviados": sent, "pendentes": pending}
+
+
 @app.post("/api/generate")
 def generate(req: GenerateRequest, request: Request):
     t0 = time.time()
@@ -716,6 +868,26 @@ def generate(req: GenerateRequest, request: Request):
         log = acc.setdefault("log", [])
         log.append({"t": time.time(), "user": user_key, "tipo": req.dados.tipologia, "zona": req.dados.zona})
         acc["log"] = log[-20:]
+        # Histórico: guarda o resultado (máx. 50 por conta)
+        hist = acc.setdefault("history", [])
+        hist.append({
+            "id": "h_" + secrets.token_hex(6),
+            "t": time.time(),
+            "tipo": req.dados.tipologia,
+            "zona": req.dados.zona,
+            "refine": bool(req.dados.anuncio_existente.strip()),
+            "result": {
+                "titulos_seo": result.get("titulos_seo", []),
+                "titulos_en": result.get("titulos_en", []),
+                "ganchos": result.get("ganchos", []),
+                "ganchos_en": result.get("ganchos_en", []),
+                "descricao_curta": result.get("descricao_curta", ""),
+                "descricao_longa": result.get("descricao_longa", ""),
+                "descricao_en": result.get("descricao_en", ""),
+                "perguntas_respostas": result.get("perguntas_respostas", []),
+            },
+        })
+        acc["history"] = hist[-50:]
         _save_users(users)
 
     if is_admin or pass_type == "month":
