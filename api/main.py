@@ -31,6 +31,7 @@ Uso: contadores por conta (dia/semana/mês), não globais.
 """
 
 import os
+import re
 import json
 import time
 import hashlib
@@ -59,6 +60,7 @@ app.add_middleware(
 ADMIN_USER = os.environ.get("ADMIN_USER", "gui")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "trilayer")
 BACKOFFICE_PASSWORD = os.environ.get("BACKOFFICE_PASSWORD", ADMIN_PASSWORD)
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 MAX_ACTIVE_SESSIONS = int(os.environ.get("MAX_ACTIVE_SESSIONS", "1"))
 DEMO_LIMIT_PER_DAY = int(os.environ.get("DEMO_LIMIT_PER_DAY", "2"))
 DEMO_IP_LIMIT_PER_DAY = int(os.environ.get("DEMO_IP_LIMIT_PER_DAY", "10"))
@@ -387,14 +389,12 @@ def health():
 
 @app.post("/api/register")
 def register(req: RegisterRequest):
-    """Cria uma conta (necessária para comprar passes) e devolve sessão iniciada."""
+    """Cria uma conta com email (necessária para comprar passes) e devolve sessão iniciada."""
     user = req.user.strip().lower()
-    if not (3 <= len(user) <= 32) or not user.replace("_", "").replace("-", "").isalnum():
-        raise HTTPException(400, "Utilizador: 3-32 caracteres (letras, números, _ ou -).")
+    if len(user) > 254 or not EMAIL_RE.match(user):
+        raise HTTPException(400, "Introduz um email válido (ex: agente@imobiliaria.pt).")
     if len(req.password) < 8:
         raise HTTPException(400, "A password tem de ter pelo menos 8 caracteres.")
-    if user.startswith("demo:"):
-        raise HTTPException(400, "Nome de utilizador inválido.")
     with _lock:
         users = _load_users()
         if user in users:
@@ -470,6 +470,7 @@ def checkout(req: CheckoutRequest):
                 line_items=[{"price": PLANS[plan]["price_id"], "quantity": 1}],
                 success_url=SITE_URL + "#comprado",
                 cancel_url=SITE_URL,
+                customer_email=user_key,  # recibo do Stripe vai para o email da conta
                 metadata={"user": user_key, "plan": plan, "consent": "true"},
             )
         except Exception as e:
@@ -530,6 +531,7 @@ async def stripe_webhook(request: Request):
             "amount_cents": sess.get("amount_total", PLANS[plan]["amount_cents"]),
             "created": now,
             "consent": True,
+            "email": user_key,
         })
         acc.pop("pending", None)
         _save_users(users)

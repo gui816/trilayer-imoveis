@@ -25,6 +25,7 @@ Compra um passe de acesso por um período; o acesso é ativado de imediato e **n
 - O tipo de passe sobe sempre para o mais forte ativo (dia → semana → mês)
 - Conta `ADMIN_USER` tem bypass (não precisa de passe — é do dono)
 - Demo anónima: 2 descrições/dia por dispositivo (+ teto por IP)
+- Registo com **email** (sem verificação por agora) — o email da conta é o destinatário do recibo do Stripe
 
 ## Deploy
 

@@ -162,12 +162,12 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 <div id="gate">
   <div class="gate-card">
     <div class="gate-logo">Casa que Vende</div>
-    <div class="gate-sub">Transforma anúncios em visitas — cria conta ou entra para gerar</div>
+    <div class="gate-sub">Transforma anúncios em visitas — cria conta com o teu email ou entra para gerar</div>
     <div class="gate-tabs">
       <button class="gate-tab active" id="tabLogin" onclick="gateMode('login')">Entrar</button>
       <button class="gate-tab" id="tabRegister" onclick="gateMode('register')">Criar conta</button>
     </div>
-    <input id="lu" type="text" class="gate-input" placeholder="Utilizador" autocomplete="username"/>
+    <input id="lu" type="email" class="gate-input" placeholder="email@exemplo.com" autocomplete="email"/>
     <input id="pw" type="password" class="gate-input" placeholder="Password (mín. 8 caracteres)" autocomplete="current-password"/>
     <div class="gate-err" id="pwErr"></div>
     <button class="btn" id="gateBtn" onclick="login()">Entrar</button>
@@ -373,7 +373,8 @@ function openGate(m){ $("gate").style.display = "flex"; $("app").style.display =
 async function login(){
   const user = $("lu").value.trim();
   const pw = $("pw").value.trim();
-  if(!user || !pw){ $("pwErr").textContent = "Introduz utilizador e password."; return; }
+  if(!user || !pw){ $("pwErr").textContent = "Introduz email e password."; return; }
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(user)){ $("pwErr").textContent = "Introduz um email válido."; return; }
   $("pwErr").textContent = "";
   try{
     const r = await fetch(API_URL + "/api/login", {
@@ -402,7 +403,7 @@ async function login(){
 async function register(){
   const user = $("lu").value.trim();
   const pw = $("pw").value.trim();
-  if(!user || user.length < 3){ $("pwErr").textContent = "Utilizador: pelo menos 3 caracteres."; return; }
+  if(!user || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(user)){ $("pwErr").textContent = "Introduz um email válido (ex: agente@imobiliaria.pt)."; return; }
   if(pw.length < 8){ $("pwErr").textContent = "Password: pelo menos 8 caracteres."; return; }
   $("pwErr").textContent = "";
   try{
