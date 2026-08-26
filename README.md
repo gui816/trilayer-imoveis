@@ -28,6 +28,7 @@ Compra um passe de acesso por um período; o acesso é ativado de imediato e **n
 - Registo com **email** (sem verificação por agora) — o email da conta é o destinatário do recibo do Stripe
 - **Histórico**: cada geração fica guardada na conta (máx. 50) — "As minhas descrições" na página
 - **Modo refinar**: cola um anúncio existente e a IA reescreve em PT-PT (mantém factos, corrige pt-BR, mesma saída) — conta 1 geração
+- **Fotografias (visão)**: anexa até 3 fotos ao formulário e a IA usa o que vê (divisões, piscina, varanda, estado…) para detalhar a descrição — os dados do formulário têm prioridade; não inventa o que não vê
 - **Lembretes de expiração**: cron diário envia email 72h antes do passe expirar (Resend)
 
 ## Deploy

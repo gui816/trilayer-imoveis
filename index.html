@@ -159,6 +159,9 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 .h-item:last-child{border-bottom:none}
 .h-item .h-meta{color:var(--sub)}
 .h-item .h-actions{display:flex;gap:.4rem;flex-wrap:wrap}
+.thumb-wrap{position:relative}
+.thumb{width:74px;height:74px;object-fit:cover;border-radius:9px;border:1px solid var(--border)}
+.thumb-x{position:absolute;top:-7px;right:-7px;background:var(--red);color:#fff;border:none;border-radius:99px;width:20px;height:20px;font-size:.7rem;font-weight:800;cursor:pointer;line-height:1}
 @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
@@ -239,6 +242,11 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <div class="field" id="refineWrap" style="display:none">
       <label>Anúncio existente (cola o texto atual — a IA reescreve em PT-PT)</label>
       <textarea id="f_existente" style="min-height:140px" placeholder="T2 no centro de Lisboa, apartamento incrível, 87m2, super charmoso, com garagem e arrecadação, condomínio fechado com piscina…"></textarea>
+    </div>
+    <div class="field">
+      <label>Fotografias (opcional) — até 3; a IA usa o que vê para detalhar a descrição</label>
+      <input type="file" id="f_fotos" accept="image/jpeg,image/png,image/webp" multiple onchange="onFotos(event)" style="padding:.4rem;background:var(--bg3);border:1px solid var(--border);border-radius:9px"/>
+      <div id="fotosPrev" style="display:flex;gap:.5rem;margin-top:.6rem;flex-wrap:wrap"></div>
     </div>
     <div class="grid">
       <div class="field"><label>Tipologia</label><input id="f_tipo" placeholder="T2"/></div>
@@ -380,6 +388,7 @@ function clearSession(){ localStorage.removeItem(SESSION_KEY); }
 
 let gateModeNow = "login";
 let modeNow = "zero";
+let fotos = [];
 function gateMode(m){
   gateModeNow = m;
   $("tabLogin").className = "gate-tab" + (m === "login" ? " active" : "");
@@ -551,6 +560,46 @@ function setMode(m){
   $("refineWrap").style.display = m === "refine" ? "block" : "none";
 }
 
+// ── Fotografias (compressão no browser, máx. 3) ──
+async function onFotos(e){
+  const files = Array.from(e.target.files || []);
+  for(const f of files){
+    if(fotos.length >= 3) break;
+    if(!f.type.startsWith("image/")) continue;
+    const b64 = await compressImage(f);
+    if(b64) fotos.push(b64);
+  }
+  e.target.value = "";
+  renderFotos();
+}
+
+function compressImage(file){
+  return new Promise(res => {
+    const img = new Image();
+    img.onload = () => {
+      const max = 1024;
+      let {width, height} = img;
+      if(width > max || height > max){
+        const r = Math.min(max / width, max / height);
+        width = Math.round(width * r); height = Math.round(height * r);
+      }
+      const cv = document.createElement("canvas");
+      cv.width = width; cv.height = height;
+      cv.getContext("2d").drawImage(img, 0, 0, width, height);
+      res(cv.toDataURL("image/jpeg", 0.8));
+    };
+    img.onerror = () => res(null);
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+function renderFotos(){
+  $("fotosPrev").innerHTML = fotos.map((f, i) =>
+    `<div class="thumb-wrap"><img class="thumb" src="${f}" alt="foto ${i+1}"/><button class="thumb-x" onclick="removeFoto(${i})">×</button></div>`
+  ).join("");
+}
+function removeFoto(i){ fotos.splice(i, 1); renderFotos(); }
+
 async function generate(){
   const s = getSession();
   if(s && s.local){
@@ -570,14 +619,15 @@ async function generate(){
     caracteristicas: $("f_carac").value.trim(),
     publico: $("f_pub").value.trim(),
     extra: $("f_extra").value.trim(),
-    anuncio_existente: $("f_existente").value.trim()
+    anuncio_existente: $("f_existente").value.trim(),
+    fotos: fotos
   };
   if(isRefine){
     if(!dados.anuncio_existente){ setStatus("Cola o anúncio que queres melhorar.", "err"); return; }
   } else {
     if(!dados.tipologia || !dados.zona){ setStatus("Tipologia e zona são obrigatórios.", "err"); return; }
   }
-  setStatus('<span class="spinner"></span>' + (isRefine ? "A melhorar o anúncio… (~1 min)" : "A gerar 3 opções… (~1 min)"));
+  setStatus('<span class="spinner"></span>' + (isRefine ? "A melhorar o anúncio… (~1 min)" : (fotos.length ? "A analisar fotografias e a gerar… (~1 min)" : "A gerar 3 opções… (~1 min)")));
   try{
     const r = await fetch(API_URL + "/api/generate", {
       method: "POST",
@@ -741,6 +791,8 @@ function renderPreview(){
 
 function clearAll(){
   ["f_tipo","f_preco","f_zona","f_area","f_andar","f_estado","f_carac","f_pub","f_extra","f_existente"].forEach(id=>$(id).value="");
+  fotos = [];
+  renderFotos();
   $("results").style.display = "none";
   setStatus("");
 }

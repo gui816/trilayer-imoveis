@@ -36,6 +36,7 @@ import re
 import csv
 import json
 import time
+import base64
 import hashlib
 import secrets
 import threading
@@ -225,6 +226,7 @@ class DadosImovel(BaseModel):
     publico: str = ""
     extra: str = ""
     anuncio_existente: str = ""
+    fotos: list = []  # data URLs base64 (data:image/jpeg;base64,...) — até 3
 
 
 class LoginRequest(BaseModel):
@@ -423,16 +425,59 @@ def _ensure_stripe_prices() -> None:
 
 
 # ── Gemini ───────────────────────────────────────────────
-def call_gemini(prompt: str) -> str:
+MAX_FOTOS = 3
+MAX_FOTO_B64 = 1_600_000  # ~1,2 MB por foto em base64
+MAX_FOTOS_TOTAL = 5_000_000  # ~3,7 MB no total
+
+FOTOS_INSTR = """
+
+FOTOGRAFIAS: recebeste também fotografias do imóvel. Usa os detalhes visíveis (divisões, cozinha, casa de banho, piscina, varanda, garagem, arrecadação, orientação solar, estado de conservação, luminosidade, exterior) para enriquecer a descrição. REGRAS: os dados do formulário têm prioridade (são confirmados pelo proprietário); não inventes o que não consegues ver — generaliza quando for ambíguo; nunca inventes áreas, preços, andares ou equipamentos que não estejam no formulário ou visíveis nas fotos."""
+
+
+def _parse_fotos(fotos) -> list:
+    """Valida as fotografias (data URLs) e devolve [{mime, b64}] para o Gemini."""
+    out = []
+    if not fotos:
+        return out
+    if not isinstance(fotos, list) or len(fotos) > MAX_FOTOS:
+        raise HTTPException(400, f"Máximo de {MAX_FOTOS} fotografias por pedido.")
+    total = 0
+    for item in fotos:
+        if not isinstance(item, str) or not item.startswith("data:image/"):
+            raise HTTPException(400, "Fotografias inválidas: envia como data URL (data:image/jpeg;base64,...).")
+        header, _, b64 = item.partition(",")
+        mime = header[5:].split(";")[0]
+        if mime not in ("image/jpeg", "image/png", "image/webp"):
+            raise HTTPException(400, "Formato de imagem não suportado (usa JPG, PNG ou WebP).")
+        try:
+            base64.b64decode(b64, validate=True)
+        except Exception:
+            raise HTTPException(400, "Fotografia em base64 inválida.")
+        if len(b64) > MAX_FOTO_B64:
+            raise HTTPException(400, "Cada fotografia tem de ter menos de ~1 MB (o formulário comprime automaticamente).")
+        total += len(b64)
+        out.append({"mime": mime, "b64": b64})
+    if total > MAX_FOTOS_TOTAL:
+        raise HTTPException(400, "Conjunto de fotografias demasiado grande — usa no máximo 3.")
+    return out
+
+
+def _gemini_body(prompt: str, fotos=None) -> dict:
+    parts = [{"text": prompt}]
+    for f in fotos or []:
+        parts.append({"inline_data": {"mime_type": f["mime"], "data": f["b64"]}})
+    return {
+        "contents": [{"parts": parts}],
+        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 8192},
+    }
+
+
+def call_gemini(prompt: str, fotos=None) -> str:
     key = os.environ.get("GEMINI_API_KEY")
     if not key:
         raise HTTPException(500, "GEMINI_API_KEY não configurada no servidor.")
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
-    body = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.7, "maxOutputTokens": 8192},
-    }
-    r = requests.post(url, params={"key": key}, json=body, timeout=90)
+    r = requests.post(url, params={"key": key}, json=_gemini_body(prompt, fotos), timeout=120)
     if r.status_code != 200:
         raise HTTPException(502, f"Gemini falhou ({r.status_code}): {r.text[:200]}")
     data = r.json()
@@ -779,6 +824,8 @@ def cron_expiring_reminders(x_cron_secret: str = Header(default="")):
 @app.post("/api/generate")
 def generate(req: GenerateRequest, request: Request):
     t0 = time.time()
+    fotos = _parse_fotos(req.dados.fotos)
+    prompt = build_prompt(req.dados) + (FOTOS_INSTR if fotos else "")
 
     # ── Modo demo (anónimo): sem token, identificado por device_id ──
     if not req.token:
@@ -807,7 +854,7 @@ def generate(req: GenerateRequest, request: Request):
                     f"Limite de demo por rede atingido ({DEMO_IP_LIMIT_PER_DAY} descrições por dia a partir deste IP). Cria uma conta para continuar.",
                 )
 
-            raw = call_gemini(build_prompt(req.dados))
+            raw = call_gemini(prompt, fotos)
             result = parse_json(raw)
 
             usage["day_count"] += 1
@@ -858,7 +905,7 @@ def generate(req: GenerateRequest, request: Request):
             if per == "week" and usage["week_count"] >= cap:
                 raise HTTPException(402, f"Limite do passe semanal atingido ({cap} descrições esta semana). Compra outro passe para continuar.")
 
-        raw = call_gemini(build_prompt(req.dados))
+        raw = call_gemini(prompt, fotos)
         result = parse_json(raw)
 
         usage["day_count"] += 1
