@@ -203,6 +203,7 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     </div>
     <div class="field"><label>Características (vírgulas)</label><input id="f_carac" placeholder="garagem, varanda 8m², arrecadação, condomínio fechado, certificado energético B"/></div>
     <div class="field"><label>Público-alvo (opcional)</label><input id="f_pub" placeholder="casal jovem, investidor, comprador estrangeiro"/></div>
+    <div class="field"><label>Informações extra (opcional)</label><input id="f_extra" placeholder="visto gold, pronto a escriturar, sem obras necessárias…"/></div>
     <div class="row-actions">
       <button class="btn" style="width:auto" onclick="generate()">⚡ Gerar descrições</button>
       <button class="btn-sm" onclick="fillExample()">Preencher exemplo</button>
@@ -371,10 +372,11 @@ async function generate(){
     andar: $("f_andar").value.trim(),
     estado: $("f_estado").value.trim(),
     caracteristicas: $("f_carac").value.trim(),
-    publico: $("f_pub").value.trim()
+    publico: $("f_pub").value.trim(),
+    extra: $("f_extra").value.trim()
   };
   if(!dados.tipologia || !dados.zona){ setStatus("Tipologia e zona são obrigatórios.", "err"); return; }
-  setStatus('<span class="spinner"></span>A gerar descrições… (~1 min)');
+  setStatus('<span class="spinner"></span>A gerar 3 opções… (~1 min)');
   try{
     const r = await fetch(API_URL + "/api/generate", {
       method: "POST",
@@ -401,8 +403,10 @@ function render(j){
   $("usage").textContent = j.demo
     ? "Demo hoje: " + j.usos_hoje + "/" + j.limite
     : "Hoje " + j.usos_hoje + "/" + j.limite + " · Semana " + j.usos_semana + "/" + j.limite_semana + " · Mês " + j.usos_mes + "/" + j.limite_mes;
-  $("r_title").innerHTML = block("Título (SEO)", j.titulo_seo);
-  $("r_short").innerHTML = block("Descrição curta", j.descricao_curta);
+  const titulos = (j.titulos_seo || []).map((t, i) => block("Título " + (i + 1) + " (SEO)", t)).join("");
+  $("r_title").innerHTML = '<div class="r-label">Escolhe um dos 3 títulos</div>' + titulos;
+  const ganchos = (j.ganchos || []).map((g, i) => block("Abertura " + (i + 1), g)).join("");
+  $("r_short").innerHTML = '<div class="r-label">Escolhe uma das 3 aberturas</div>' + ganchos;
   $("r_long").innerHTML = block("Descrição longa PT-PT", j.descricao_longa);
   $("r_en").innerHTML = block("Versão EN (compradores estrangeiros)", j.descricao_en);
   let faq = '<div class="r-faq"><div class="r-label">Respostas a perguntas frequentes</div>';
@@ -435,11 +439,21 @@ function fillExample(){
   $("f_estado").value = "reabilitado em 2023";
   $("f_carac").value = "garagem, varanda 8m², arrecadação, condomínio com piscina, certificado energético B-, orientação solar poente, cozinha equipada";
   $("f_pub").value = "casal jovem e investidores";
+  $("f_extra").value = "pronto a escriturar, sem obras necessárias";
 }
 
 function renderPreview(){
   render({
-    titulo_seo: "T2 reabilitado com garagem e varanda em Alvalade — 295.000 €",
+    titulos_seo: [
+      "T2 reabilitado com garagem e varanda em Alvalade — 295.000 €",
+      "Alvalade: T2 reabilitado em 2023, a 5 min do metro",
+      "Viver em Alvalade: T2 com piscina, garagem e luz até ao fim do dia"
+    ],
+    ganchos: [
+      "A 5 minutos do metro, este T2 reabilitado em 2023 é o equilíbrio certo entre bairro tranquilo e cidade à porta.",
+      "Há casas que se visitam e casas onde se fica — esta varanda virada a poente faz parte das segundas.",
+      "87 m² de área bruta, certificado energético B- e condomínio com piscina: os números falam por si."
+    ],
     descricao_curta: "T2 reabilitado em 2023 em Alvalade, a 5 minutos do metro. 87 m², varanda virada a poente, garagem e arrecadação. Certificado energético B-.",
     descricao_longa: "No coração de Alvalade, este T2 reabilitado em 2023 combina a tranquilidade de um dos bairros mais procurados de Lisboa com acesso imediato a transportes, escolas e comércio. Com 87 m² de área bruta, a sala ampla abre para uma varanda de 8 m² virada a poente, perfeita para o final do dia. A cozinha está totalmente equipada e o imóvel inclui garagem, arrecadação e condomínio com piscina. Certificado energético B-. Ideal para quem quer viver em Lisboa sem abrir mão de qualidade de vida — ou para investidores à procura de mais-valia.\n\nA 5 minutos a pé do metro de Alvalade e a 10 minutos do aeroporto, numa zona com escolas, supermercados e restaurantes que mantém a identidade de bairro.",
     descricao_en: "Fully renovated two-bedroom flat in the heart of Alvalade, one of Lisbon's most sought-after neighbourhoods. 87 sqm of gross area, west-facing balcony, garage and storage room. Energy certificate B-. Communal garden pool. 5 minutes from Alvalade metro and 10 minutes from the airport — the perfect balance between city life and neighbourhood charm.",
@@ -454,7 +468,7 @@ function renderPreview(){
 }
 
 function clearAll(){
-  ["f_tipo","f_preco","f_zona","f_area","f_andar","f_estado","f_carac","f_pub"].forEach(id=>$(id).value="");
+  ["f_tipo","f_preco","f_zona","f_area","f_andar","f_estado","f_carac","f_pub","f_extra"].forEach(id=>$(id).value="");
   $("results").style.display = "none";
   setStatus("");
 }

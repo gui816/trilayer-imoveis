@@ -71,7 +71,8 @@ REGRAS OBRIGATÓRIAS:
 
 RESPONDE APENAS COM JSON válido, sem markdown, com esta estrutura exata:
 {
-  "titulo_seo": "T2 reabilitado com garagem e varanda em Alvalade — 295.000 €",
+  "titulos_seo": ["Título SEO 1", "Título SEO 2", "Título SEO 3"],
+  "ganchos": ["Primeira frase de abertura 1", "Abertura 2", "Abertura 3"],
   "descricao_curta": "máx. 300 caracteres, 1 parágrafo",
   "descricao_longa": "600-900 caracteres, 3-4 parágrafos, PT-PT",
   "descricao_en": "versão inglesa da longa",
@@ -81,7 +82,13 @@ RESPONDE APENAS COM JSON válido, sem markdown, com esta estrutura exata:
     {"pergunta": "Quais são as despesas de condomínio?", "resposta": "..."},
     {"pergunta": "Quando é possível visitar?", "resposta": "..."}
   ]
-}"""
+}
+
+REGRAS DOS 3 TÍTULOS E 3 ABERTURAS:
+- Os 3 títulos SEO devem ter ângulos diferentes: um focado na localização, outro nas características/chave de venda, outro no estilo de vida ou preço. Cada um máx. 60 caracteres.
+- Os 3 ganchos (primeira frase da descrição longa) devem ter tons diferentes: um sóbrio/profissional, um emocional/envolvente, um técnico/detalhado. Cada um máx. 160 caracteres.
+- A descrição longa deve começar com o gancho escolhido de forma natural — usa o gancho 1 como abertura padrão da descrição longa.
+"""
 
 
 class DadosImovel(BaseModel):
@@ -93,6 +100,7 @@ class DadosImovel(BaseModel):
     estado: str = ""
     caracteristicas: str = ""
     publico: str = ""
+    extra: str = ""
 
 
 class LoginRequest(BaseModel):
@@ -253,7 +261,8 @@ def build_prompt(d: DadosImovel) -> str:
     )
     carac = d.caracteristicas or "sem características adicionais fornecidas"
     pub = f"Público-alvo: {d.publico}." if d.publico else ""
-    return f"{SYSTEM_PROMPT}\n\nDADOS DO IMÓVEL:\n{linha}\nCaracterísticas: {carac}\n{pub}"
+    extra = f"Informações adicionais: {d.extra}." if d.extra else ""
+    return f"{SYSTEM_PROMPT}\n\nDADOS DO IMÓVEL:\n{linha}\nCaracterísticas: {carac}\n{pub}\n{extra}"
 
 
 # ── Endpoints ────────────────────────────────────────────
@@ -346,7 +355,8 @@ def generate(req: GenerateRequest, request: Request):
             _bump_ip(ip)
 
         return {
-            "titulo_seo": result.get("titulo_seo", ""),
+            "titulos_seo": result.get("titulos_seo", []),
+            "ganchos": result.get("ganchos", []),
             "descricao_curta": result.get("descricao_curta", ""),
             "descricao_longa": result.get("descricao_longa", ""),
             "descricao_en": result.get("descricao_en", ""),
@@ -391,7 +401,8 @@ def generate(req: GenerateRequest, request: Request):
         _save_users(users)
 
     return {
-        "titulo_seo": result.get("titulo_seo", ""),
+        "titulos_seo": result.get("titulos_seo", []),
+        "ganchos": result.get("ganchos", []),
         "descricao_curta": result.get("descricao_curta", ""),
         "descricao_longa": result.get("descricao_longa", ""),
         "descricao_en": result.get("descricao_en", ""),
