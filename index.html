@@ -89,7 +89,7 @@ nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:
 .plan li::before{content:"✓";position:absolute;left:0;color:var(--g);font-weight:700}
 .plan .btn{pointer-events:none;opacity:.7}
 .plan-note{font-size:.72rem;color:var(--sub);text-align:center;margin-top:1rem}
-.modes{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.2rem}
+.modes{display:grid;grid-template-columns:1fr;gap:1rem;margin-bottom:1.2rem;max-width:640px}
 @media(max-width:700px){.modes{grid-template-columns:1fr}}
 .mode{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:1.6rem}
 .mode h3{font-size:.95rem;font-weight:700;margin-bottom:.5rem}
@@ -188,10 +188,6 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <div class="mode">
       <h3>⚡ Gerar do zero</h3>
       <p>Preenches os dados do imóvel em 3 linhas e recebes o anúncio completo em ~1 minuto.</p>
-    </div>
-    <div class="mode">
-      <h3>✨ Refinar o que já tens <span class="soon">em breve</span></h3>
-      <p>Cola um anúncio atual — mesmo fraco, incompleto ou em pt-BR — e a IA afinada para o mercado imobiliário português reescreve-o em PT-PT autêntico, com SEO e tom que vende.</p>
     </div>
   </div>
 
