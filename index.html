@@ -145,8 +145,6 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
     <input id="pw" type="password" class="gate-input" placeholder="Password" autocomplete="current-password"/>
     <div class="gate-err" id="pwErr"></div>
     <button class="btn" onclick="login()">Entrar</button>
-    <div class="gate-or">ou</div>
-    <button class="btn btn-ghost" onclick="enterDemo()">🎁 Experimentar demo grátis (1 descrição)</button>
   </div>
 </div>
 
@@ -159,8 +157,6 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
       <button class="btn-sm" onclick="logout()">Sair</button>
     </div>
   </nav>
-
-  <div id="demoBanner" class="demo-banner" style="display:none"></div>
 
   <div class="hero-grid">
     <div>
@@ -325,35 +321,16 @@ function showApp(){
   $("gate").style.display = "none";
   $("app").style.display = "block";
   const s = getSession();
-  $("navUser").textContent = (s && s.user) ? s.user : "demo";
-  if(!s || !s.token) refreshDemoBanner();
-}
-
-function enterDemo(){
-  clearSession();
-  showApp();
+  $("navUser").textContent = (s && s.user) ? s.user : "—";
 }
 
 function ctaDemo(){
   const s = getSession();
-  if(!s || !s.token) enterDemo();
+  if(!s || !s.token){ $("gate").style.display = "flex"; $("app").style.display = "none"; $("lu").focus(); return; }
   document.getElementById("form-card").scrollIntoView({behavior:"smooth"});
 }
 
-async function refreshDemoBanner(){
-  try{
-    const r = await fetch(API_URL + "/api/demo?device_id=" + encodeURIComponent(deviceId()));
-    if(!r.ok) return;
-    const j = await r.json();
-    const left = Math.max(0, j.limite - j.usos_hoje);
-    $("demoBanner").style.display = "block";
-    $("demoBanner").textContent = left > 0
-      ? (left === 1
-        ? "🎁 Modo demo: tens 1 descrição grátis hoje neste dispositivo."
-        : "🎁 Modo demo: " + left + " de " + j.limite + " descrições grátis hoje neste dispositivo.")
-      : "Demo grátis esgotada hoje. Cria uma conta para continuar.";
-  }catch(e){}
-}
+async function refreshDemoBanner(){}
 
 function setStatus(msg, cls){ const s = $("status"); s.textContent = msg; s.className = cls || ""; }
 
@@ -380,14 +357,13 @@ async function generate(){
     });
     const j = await r.json();
     if(!r.ok){
-      if(r.status === 402){ setStatus(j.detail || "Limite atingido.", "err"); if(isDemo) refreshDemoBanner(); }
+      if(r.status === 402){ setStatus(j.detail || "Limite atingido.", "err"); }
       else if(r.status === 429){ setStatus(j.detail || "Limite de demo por rede atingido. Cria uma conta para continuar.", "err"); }
       else if(r.status === 401){ clearSession(); logout(); $("pwErr").textContent = "Sessão expirada ou conta em uso noutro dispositivo."; }
       else { setStatus(j.detail || "Erro ao gerar. Tenta novamente.", "err"); }
       return;
     }
     render(j);
-    if(j.demo) refreshDemoBanner();
     setStatus("✓ Pronto em " + (j.segundos || "?") + "s", "ok");
   }catch(e){
     setStatus("Erro de rede. Verifica se a API está online.", "err");
