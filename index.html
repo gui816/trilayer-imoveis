@@ -105,6 +105,7 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
 .hero-media .tag{position:absolute;left:12px;bottom:12px;background:rgba(255,255,255,.93);color:#2a2520;font-size:.72rem;font-weight:700;padding:.4rem .8rem;border-radius:99px;letter-spacing:.02em;box-shadow:0 4px 12px rgba(42,37,32,.14)}
 .cta-row{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-top:1.3rem}
 .cta-note{font-size:.8rem;color:var(--sub)}
+.offline-banner{background:rgba(185,138,47,.14);border:1px solid rgba(185,138,47,.45);color:#8a6a24;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
 .demo-banner{background:rgba(201,151,63,.12);border:1px solid rgba(185,138,47,.4);color:#8a6a24;border-radius:10px;padding:.7rem 1rem;font-size:.82rem;font-weight:600;margin-bottom:1.4rem}
 @media(max-width:860px){.hero-grid{grid-template-columns:1fr}.hero-media{order:-1}}
 
@@ -157,6 +158,8 @@ footer{margin-top:3rem;color:var(--sub);font-size:.75rem;text-align:center}
       <button class="btn-sm" onclick="logout()">Sair</button>
     </div>
   </nav>
+
+  <div id="offlineBanner" class="offline-banner" style="display:none">⚠️ Modo pré-visualização — a API ainda não está ligada. O login de teste funciona localmente; os resultados são exemplos.</div>
 
   <div class="hero-grid">
     <div>
@@ -277,6 +280,20 @@ const DEVICE_KEY = "tl_dev";
 
 const $ = id => document.getElementById(id);
 
+// Login local de teste (sem API): user/password validados no browser.
+// A password nunca fica em plaintext no código — só o hash SHA-256.
+const LOCAL_USER = "gui";
+const LOCAL_PASS_HASH = "a6f344dcd92e3ac9e0984441db433e71d969bc1b33419afd93d39e1d0f752840";
+
+async function sha256hex(str){
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function isLocalSession(){ const s = getSession(); return !!(s && s.local); }
+function showOffline(){ $("offlineBanner").style.display = "block"; }
+function hideOffline(){ $("offlineBanner").style.display = "none"; }
+
 function deviceId(){
   let d = localStorage.getItem(DEVICE_KEY);
   if(!d){
@@ -304,9 +321,18 @@ async function login(){
     const j = await r.json();
     if(!r.ok){ $("pwErr").textContent = j.detail || "Erro ao iniciar sessão."; return; }
     setSession(j.user, j.token);
+    hideOffline();
     showApp();
   }catch(e){
-    $("pwErr").textContent = "Erro de rede. Verifica se a API está online.";
+    // API offline → login local de teste (sem servidor)
+    const okLocal = user === LOCAL_USER && (await sha256hex(pw)) === LOCAL_PASS_HASH;
+    if(okLocal){
+      localStorage.setItem(SESSION_KEY, JSON.stringify({ user, token: "", local: true }));
+      showApp();
+      showOffline();
+    } else {
+      $("pwErr").textContent = "Erro de rede. Verifica se a API está online.";
+    }
   }
 }
 
@@ -323,7 +349,6 @@ function showApp(){
   const s = getSession();
   $("navUser").textContent = (s && s.user) ? s.user : "—";
 }
-
 function ctaDemo(){
   const s = getSession();
   if(!s || !s.token){ $("gate").style.display = "flex"; $("app").style.display = "none"; $("lu").focus(); return; }
@@ -336,6 +361,11 @@ function setStatus(msg, cls){ const s = $("status"); s.textContent = msg; s.clas
 
 async function generate(){
   const s = getSession();
+  if(s && s.local){
+    renderPreview();
+    setStatus("⚠️ Pré-visualização — a API ainda não está ligada. Estes são exemplos.", "ok");
+    return;
+  }
   const isDemo = !(s && s.token);
   const dados = {
     tipologia: $("f_tipo").value.trim(),
@@ -411,15 +441,31 @@ function fillExample(){
   $("f_pub").value = "casal jovem e investidores";
 }
 
+function renderPreview(){
+  render({
+    titulo_seo: "T2 reabilitado com garagem e varanda em Alvalade — 295.000 €",
+    descricao_curta: "T2 reabilitado em 2023 em Alvalade, a 5 minutos do metro. 87 m², varanda virada a poente, garagem e arrecadação. Certificado energético B-.",
+    descricao_longa: "No coração de Alvalade, este T2 reabilitado em 2023 combina a tranquilidade de um dos bairros mais procurados de Lisboa com acesso imediato a transportes, escolas e comércio. Com 87 m² de área bruta, a sala ampla abre para uma varanda de 8 m² virada a poente, perfeita para o final do dia. A cozinha está totalmente equipada e o imóvel inclui garagem, arrecadação e condomínio com piscina. Certificado energético B-. Ideal para quem quer viver em Lisboa sem abrir mão de qualidade de vida — ou para investidores à procura de mais-valia.\n\nA 5 minutos a pé do metro de Alvalade e a 10 minutos do aeroporto, numa zona com escolas, supermercados e restaurantes que mantém a identidade de bairro.",
+    descricao_en: "Fully renovated two-bedroom flat in the heart of Alvalade, one of Lisbon's most sought-after neighbourhoods. 87 sqm of gross area, west-facing balcony, garage and storage room. Energy certificate B-. Communal garden pool. 5 minutes from Alvalade metro and 10 minutes from the airport — the perfect balance between city life and neighbourhood charm.",
+    perguntas_respostas: [
+      {pergunta: "Qual é a morada exata?", resposta: "A morada exata é divulgada após contacto — por segurança, a localização aproximada é Alvalade, Lisboa."},
+      {pergunta: "Tem estacionamento/garagem?", resposta: "Sim, o imóvel inclui uma garagem privativa."},
+      {pergunta: "Quais são as despesas de condomínio?", resposta: "As despesas de condomínio rondam os 45 €/mês (valor a confirmar na escritura)."},
+      {pergunta: "Quando é possível visitar?", resposta: "As visitas podem ser agendadas de segunda a sábado. Contacte-nos para marcar a sua."}
+    ],
+    demo: false, usos_hoje: 0, limite: 20, usos_semana: 0, limite_semana: 50, usos_mes: 0, limite_mes: 200
+  });
+}
+
 function clearAll(){
   ["f_tipo","f_preco","f_zona","f_area","f_andar","f_estado","f_carac","f_pub"].forEach(id=>$(id).value="");
   $("results").style.display = "none";
   setStatus("");
 }
 
-// Auto-login se houver sessão guardada; caso contrário mostra a gate (com demo).
+// Auto-login se houver sessão guardada (token da API ou login local); caso contrário mostra a gate.
 const s0 = getSession();
-if(s0 && s0.token){ showApp(); } else { $("gate").style.display = "flex"; $("app").style.display = "none"; }
+if(s0 && (s0.token || s0.local)){ showApp(); if(s0.local) showOffline(); } else { $("gate").style.display = "flex"; $("app").style.display = "none"; }
 $("pw").addEventListener("keydown", e => { if(e.key === "Enter") login(); });
 $("lu").addEventListener("keydown", e => { if(e.key === "Enter") $("pw").focus(); });
 </script>
